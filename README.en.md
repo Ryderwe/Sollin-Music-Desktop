@@ -14,7 +14,7 @@
 
 Sollin is a cross-platform desktop music player built with Electron, React, TypeScript, Vite and Tailwind CSS. It focuses on local playback and online playback. Local playback covers the local library, playlists, lyrics, downloads and backups. Online playback depends on user-imported LX JS source scripts.
 
-Sollin Desktop has been open source since version `1.3.1`. This open-source edition does not include private server account, activation, announcement or server cloud backup features. It also does not include private source scripts or private music APIs.
+Sollin Desktop has been open source since version `1.3.1`. This open-source edition does not include private server account, activation or server cloud backup features. It also does not include private source scripts or private music APIs. Announcements can optionally be read from public GitHub Issue comments and do not depend on a private backend.
 
 ## Contents
 
@@ -26,6 +26,7 @@ Sollin Desktop has been open source since version `1.3.1`. This open-source edit
 - [Package Desktop Apps](#package-desktop-apps)
 - [GitHub Actions Packaging](#github-actions-packaging)
 - [Update Checking](#update-checking)
+- [Announcement Configuration](#announcement-configuration)
 - [Source Configuration](#source-configuration)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
@@ -63,6 +64,9 @@ Available variables:
 VITE_APP_VERSION=1.3.1
 VITE_DEV_SERVER_PORT=5173
 VITE_GITHUB_REPO=Ryderwe/Sollin-Music-Desktop-OpenSource
+VITE_GITHUB_ANNOUNCEMENT_REPO=Ryderwe/Sollin-Music-Desktop-OpenSource
+VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER=
+VITE_GITHUB_ANNOUNCEMENT_AUTHOR=ryderwe
 ```
 
 Configuration reference:
@@ -70,6 +74,9 @@ Configuration reference:
 - `VITE_APP_VERSION`: current app version, used by Settings and update checks.
 - `VITE_DEV_SERVER_PORT`: Vite dev server port.
 - `VITE_GITHUB_REPO`: GitHub repository used for update checks, in `owner/repo` format.
+- `VITE_GITHUB_ANNOUNCEMENT_REPO`: GitHub repository used for announcement comments, in `owner/repo` format. Defaults to `VITE_GITHUB_REPO`.
+- `VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER`: Issue number used for announcements. Leave empty to disable announcement checks.
+- `VITE_GITHUB_ANNOUNCEMENT_AUTHOR`: only comments published by this GitHub user are shown. Defaults to `ryderwe`.
 
 The open-source edition does not require a private service URL. Do not commit `.env.local`, tokens, certificates, local machine paths or internal API documents.
 
@@ -246,6 +253,18 @@ Recommended release flow:
 3. Create a tag such as `v1.3.2`.
 4. Upload Windows, macOS and Linux packages to the GitHub Release.
 
+## Announcement Configuration
+
+The open-source edition can read announcements from public GitHub Issue comments. After `VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER` is configured, the app requests the comments API for that Issue on startup and shows only the latest comment published by `VITE_GITHUB_ANNOUNCEMENT_AUTHOR`. After the user closes it, the app records it locally as read; editing the same comment will show it again.
+
+Usage:
+
+1. Create a fixed public Issue in the repository, for example with the title `Announcements`.
+2. Publish announcement comments in that Issue only from the `ryderwe` account.
+3. Set the Issue number in `.env.local` as `VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER`.
+
+This feature only calls GitHub's public API. It does not need a token and does not connect to a private backend.
+
 ## Source Configuration
 
 Online playback and online search rely on LX JS source scripts imported by the user. This repository does not include private, paid or built-in source scripts.
@@ -363,7 +382,7 @@ Only use source scripts, music APIs and content that you are allowed to use.
 
 - Private server account login, registration and sessions.
 - Paid unlocking and device binding.
-- Private announcements and global notices.
+- Private backend announcements and global notices.
 - Server cloud backup.
 - Update checks through a private service.
 - Configuration delivery through a private service.

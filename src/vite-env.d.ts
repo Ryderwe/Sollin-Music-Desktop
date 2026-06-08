@@ -15,6 +15,12 @@ interface ImportMetaEnv {
   readonly DEV: boolean
   readonly PROD: boolean
   readonly MODE: string
+  readonly VITE_APP_VERSION?: string
+  readonly VITE_DEV_SERVER_PORT?: string
+  readonly VITE_GITHUB_REPO?: string
+  readonly VITE_GITHUB_ANNOUNCEMENT_REPO?: string
+  readonly VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER?: string
+  readonly VITE_GITHUB_ANNOUNCEMENT_AUTHOR?: string
 }
 
 interface ImportMeta {

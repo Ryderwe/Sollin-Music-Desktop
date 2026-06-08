@@ -10,6 +10,7 @@ import ImportPlaylistModal from '@/components/modals/ImportPlaylistModal'
 import UpdateModal from '@/components/modals/UpdateModal'
 import LoginModal from '@/components/modals/LoginModal'
 import LxSourceUpdateModal from '@/components/modals/LxSourceUpdateModal'
+import GithubAnnouncementModal from '@/components/modals/GithubAnnouncementModal'
 import LocalSongTagEditorModal from '@/components/modals/LocalSongTagEditorModal'
 import SettingsModal from '@/components/modals/SettingsModal'
 import Toast from '@/components/ui/Toast'
@@ -17,6 +18,12 @@ import { analytics } from '@/services/analytics'
 import { lxSourceApi, type LxSourceUpdateAlert } from '@/services/lxSource'
 import { APP_VERSION } from '@/config'
 import { checkGithubUpdate } from '@/services/githubUpdate'
+import {
+  fetchGithubAnnouncement,
+  getGithubAnnouncementFingerprint,
+  GITHUB_ANNOUNCEMENT_STORAGE_KEY,
+  type GithubAnnouncement,
+} from '@/services/githubAnnouncement'
 import { downloadManager } from '@/services/downloadManager'
 import { refreshAutoUpdateOnlinePlaylists } from '@/services/onlinePlaylistAutoUpdate'
 import dataSyncService from '@/services/dataSync'
@@ -75,6 +82,8 @@ function App() {
   } | null>(null)
 
   const [lxSourceUpdateAlert, setLxSourceUpdateAlert] = useState<LxSourceUpdateAlert | null>(null)
+  const [githubAnnouncement, setGithubAnnouncement] = useState<GithubAnnouncement | null>(null)
+  const [showGithubAnnouncementModal, setShowGithubAnnouncementModal] = useState(false)
   const handledLxSourceAlertsRef = useRef<Set<string>>(new Set())
   const isApplyingRemoteSnapshotRef = useRef(false)
   const pushSnapshotTimerRef = useRef<number | null>(null)
@@ -167,7 +176,8 @@ function App() {
     })
 
     // Check for updates on startup
-    checkForUpdates()
+    void checkForUpdates()
+    void checkAnnouncement()
 
     return () => {
       analytics.stop()
@@ -294,6 +304,33 @@ function App() {
     } catch (error) {
       console.debug('Update check failed:', error)
     }
+  }
+
+  // Check public announcements from GitHub Issue comments.
+  const checkAnnouncement = async () => {
+    try {
+      const announcement = await fetchGithubAnnouncement()
+      if (!announcement) return
+
+      const fingerprint = getGithubAnnouncementFingerprint(announcement)
+      const dismissedFingerprint = window.localStorage.getItem(GITHUB_ANNOUNCEMENT_STORAGE_KEY)
+      if (dismissedFingerprint === fingerprint) return
+
+      setGithubAnnouncement(announcement)
+      setShowGithubAnnouncementModal(true)
+    } catch (error) {
+      console.debug('GitHub announcement check failed:', error)
+    }
+  }
+
+  const closeGithubAnnouncement = () => {
+    if (githubAnnouncement) {
+      window.localStorage.setItem(
+        GITHUB_ANNOUNCEMENT_STORAGE_KEY,
+        getGithubAnnouncementFingerprint(githubAnnouncement),
+      )
+    }
+    setShowGithubAnnouncementModal(false)
   }
 
   // Apply theme
@@ -503,6 +540,12 @@ function App() {
       <LxSourceUpdateModal
         alert={lxSourceUpdateAlert}
         onClose={() => setLxSourceUpdateAlert(null)}
+      />
+
+      <GithubAnnouncementModal
+        isOpen={showGithubAnnouncementModal}
+        announcement={githubAnnouncement}
+        onClose={closeGithubAnnouncement}
       />
 
       {/* Toasts */}
