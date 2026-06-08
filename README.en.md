@@ -1,8 +1,10 @@
 # Sollin｜A music playback client that is compatible with both online and local music.
 
 <p>
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square"></a>
-  <a href="https://github.com/Ryderwe/Sollin-Music-Desktop/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Ryderwe/Sollin-Music-Desktop?style=flat-square"></a>
+
+Blog: [月明星稀](https://www.ymxx.net)
+
+[中文](README.md) | English
   <a href="https://github.com/Ryderwe/Sollin-Music-Desktop/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Ryderwe/Sollin-Music-Desktop?include_prereleases&style=flat-square"></a>
   <img alt="Electron 28" src="https://img.shields.io/badge/Electron-28-47848F?logo=electron&logoColor=white&style=flat-square">
   <img alt="React 18" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=20232A&style=flat-square">
@@ -485,6 +487,8 @@ Sollin is an independent project, but it benefits from the ideas and ecosystem b
 - [LX Music Desktop](https://github.com/lyswhut/lx-music-desktop): reference and inspiration for desktop music player behavior, local data workflows, sync concepts and the LX source script ecosystem.
 - [Apple Music-like Lyrics](https://github.com/amll-dev/applemusic-like-lyrics): lyric rendering libraries used for Apple Music-like lyric experiences.
 - Electron, React, Vite, TypeScript, Tailwind CSS and the broader open-source ecosystem.
+
+- [linux.do](https://linux.do): Linux community.
 
 ## License
 

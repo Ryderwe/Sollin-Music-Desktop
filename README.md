@@ -10,6 +10,8 @@
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square">
 </p>
 
+博客： [月明星稀](https://www.ymxx.net)
+
 中文 | [English](README.en.md)
 
 Sollin 是一个基于 Electron、React、TypeScript、Vite 和 Tailwind CSS 构建的跨平台桌面音乐播放器。它主要面向本地播放和在线播放：本地播放负责本地曲库、歌单、歌词、下载和备份；在线播放依赖用户自行导入的 LX JS 音源脚本。
@@ -484,6 +486,8 @@ Sollin 是独立项目，但它受益于以下开源项目的思路和生态：
 - [LX Music Desktop](https://github.com/lyswhut/lx-music-desktop)：桌面音乐播放器行为、本地数据流程、同步概念和 LX 音源脚本生态的重要参考。
 - [Apple Music-like Lyrics](https://github.com/amll-dev/applemusic-like-lyrics)：用于实现 Apple Music 风格歌词体验的歌词渲染库。
 - Electron、React、Vite、TypeScript、Tailwind CSS 以及更广泛的开源生态。
+
+- [linux.do](https://linux.do)：Linux 技术社区。
 
 ## 许可证
 
