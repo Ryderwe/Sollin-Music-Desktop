@@ -2,8 +2,8 @@
 
 <p>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square"></a>
-  <a href="https://github.com/Ryderwe/Sollin-Music-Desktop-OpenSource/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Ryderwe/Sollin-Music-Desktop-OpenSource?style=flat-square"></a>
-  <a href="https://github.com/Ryderwe/Sollin-Music-Desktop-OpenSource/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Ryderwe/Sollin-Music-Desktop-OpenSource?include_prereleases&style=flat-square"></a>
+  <a href="https://github.com/Ryderwe/Sollin-Music-Desktop/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Ryderwe/Sollin-Music-Desktop?style=flat-square"></a>
+  <a href="https://github.com/Ryderwe/Sollin-Music-Desktop/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Ryderwe/Sollin-Music-Desktop?include_prereleases&style=flat-square"></a>
   <img alt="Electron 28" src="https://img.shields.io/badge/Electron-28-47848F?logo=electron&logoColor=white&style=flat-square">
   <img alt="React 18" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=20232A&style=flat-square">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white&style=flat-square">
@@ -63,9 +63,9 @@ Available variables:
 ```env
 VITE_APP_VERSION=1.3.1
 VITE_DEV_SERVER_PORT=5173
-VITE_GITHUB_REPO=Ryderwe/Sollin-Music-Desktop-OpenSource
-VITE_GITHUB_ANNOUNCEMENT_REPO=Ryderwe/Sollin-Music-Desktop-OpenSource
-VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER=
+VITE_GITHUB_REPO=Ryderwe/Sollin-Music-Desktop
+VITE_GITHUB_ANNOUNCEMENT_REPO=Ryderwe/Sollin-Music-Desktop
+VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER=1
 VITE_GITHUB_ANNOUNCEMENT_AUTHOR=ryderwe
 ```
 
@@ -75,7 +75,7 @@ Configuration reference:
 - `VITE_DEV_SERVER_PORT`: Vite dev server port.
 - `VITE_GITHUB_REPO`: GitHub repository used for update checks, in `owner/repo` format.
 - `VITE_GITHUB_ANNOUNCEMENT_REPO`: GitHub repository used for announcement comments, in `owner/repo` format. Defaults to `VITE_GITHUB_REPO`.
-- `VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER`: Issue number used for announcements. Leave empty to disable announcement checks.
+- `VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER`: Issue number used for announcements. The official default is `1`; set it explicitly to an empty value to disable announcement checks.
 - `VITE_GITHUB_ANNOUNCEMENT_AUTHOR`: only comments published by this GitHub user are shown. Defaults to `ryderwe`.
 
 The open-source edition does not require a private service URL. Do not commit `.env.local`, tokens, certificates, local machine paths or internal API documents.
@@ -482,6 +482,6 @@ MIT. See [LICENSE](LICENSE).
 
 ## Star History
 
-<a href="https://star-history.com/#Ryderwe/Sollin-Music-Desktop-OpenSource&Date">
-  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Ryderwe/Sollin-Music-Desktop-OpenSource&type=Date">
+<a href="https://star-history.com/#Ryderwe/Sollin-Music-Desktop&Date">
+  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Ryderwe/Sollin-Music-Desktop&type=Date">
 </a>

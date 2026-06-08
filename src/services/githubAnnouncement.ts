@@ -73,30 +73,37 @@ const fetchCommentPage = async(owner: string, repo: string, issueNumber: number,
   }
 }
 
-const pickAnnouncement = (comments: GithubIssueComment[], issueNumber: number): GithubAnnouncement | null => {
-  const author = normalizeLogin(GITHUB_ANNOUNCEMENT_AUTHOR)
-  if (!author) return null
-
-  const matched = comments
-    .filter((comment) => normalizeLogin(comment.user?.login || '') === author)
-    .filter((comment) => typeof comment.id === 'number' && String(comment.body || '').trim())
-    .sort((left, right) => {
-      const rightTime = Math.max(parseDate(right.updated_at), parseDate(right.created_at))
-      const leftTime = Math.max(parseDate(left.updated_at), parseDate(left.created_at))
-      return rightTime - leftTime
-    })
-
-  const latest = matched[0]
-  if (!latest?.id) return null
+const toAnnouncement = (comment: GithubIssueComment, issueNumber: number): GithubAnnouncement | null => {
+  if (typeof comment.id !== 'number') return null
+  const body = String(comment.body || '').trim()
+  if (!body) return null
 
   return {
-    id: String(latest.id),
-    body: String(latest.body || '').trim(),
-    htmlUrl: latest.html_url || `https://github.com/${GITHUB_ANNOUNCEMENT_REPO}/issues/${issueNumber}`,
-    author: latest.user?.login || GITHUB_ANNOUNCEMENT_AUTHOR,
-    createdAt: latest.created_at,
-    updatedAt: latest.updated_at,
+    id: String(comment.id),
+    body,
+    htmlUrl: comment.html_url || `https://github.com/${GITHUB_ANNOUNCEMENT_REPO}/issues/${issueNumber}`,
+    author: comment.user?.login || GITHUB_ANNOUNCEMENT_AUTHOR,
+    createdAt: comment.created_at,
+    updatedAt: comment.updated_at,
   }
+}
+
+const sortAnnouncements = (announcements: GithubAnnouncement[]) => {
+  return [...announcements].sort((left, right) => {
+    const rightTime = Math.max(parseDate(right.updatedAt), parseDate(right.createdAt))
+    const leftTime = Math.max(parseDate(left.updatedAt), parseDate(left.createdAt))
+    return rightTime - leftTime
+  })
+}
+
+const filterAuthorComments = (comments: GithubIssueComment[], issueNumber: number): GithubAnnouncement[] => {
+  const author = normalizeLogin(GITHUB_ANNOUNCEMENT_AUTHOR)
+  if (!author) return []
+
+  return sortAnnouncements(comments
+    .filter((comment) => normalizeLogin(comment.user?.login || '') === author)
+    .map((comment) => toAnnouncement(comment, issueNumber))
+    .filter((announcement): announcement is GithubAnnouncement => Boolean(announcement)))
 }
 
 export const getGithubAnnouncementFingerprint = (announcement: GithubAnnouncement) => {
@@ -104,10 +111,15 @@ export const getGithubAnnouncementFingerprint = (announcement: GithubAnnouncemen
 }
 
 export const fetchGithubAnnouncement = async(): Promise<GithubAnnouncement | null> => {
-  if (!GITHUB_ANNOUNCEMENT_ISSUE_NUMBER) return null
+  const history = await fetchGithubAnnouncementHistory()
+  return history[0] || null
+}
+
+export const fetchGithubAnnouncementHistory = async(): Promise<GithubAnnouncement[]> => {
+  if (!GITHUB_ANNOUNCEMENT_ISSUE_NUMBER) return []
 
   const repoParts = parseGithubRepo(GITHUB_ANNOUNCEMENT_REPO)
-  if (!repoParts) return null
+  if (!repoParts) return []
 
   const [owner, repo] = repoParts
   const issueNumber = GITHUB_ANNOUNCEMENT_ISSUE_NUMBER
@@ -125,7 +137,7 @@ export const fetchGithubAnnouncement = async(): Promise<GithubAnnouncement | nul
     .map((page) => fetchCommentPage(owner, repo, issueNumber, page))
 
   const rest = await Promise.all(otherPages)
-  return pickAnnouncement([
+  return filterAuthorComments([
     ...firstPage.comments,
     ...rest.flatMap((page) => page.comments),
   ], issueNumber)

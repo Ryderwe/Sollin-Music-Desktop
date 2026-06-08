@@ -2,8 +2,8 @@
 
 <p>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square"></a>
-  <a href="https://github.com/Ryderwe/Sollin-Music-Desktop-OpenSource/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Ryderwe/Sollin-Music-Desktop-OpenSource?style=flat-square"></a>
-  <a href="https://github.com/Ryderwe/Sollin-Music-Desktop-OpenSource/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Ryderwe/Sollin-Music-Desktop-OpenSource?include_prereleases&style=flat-square"></a>
+  <a href="https://github.com/Ryderwe/Sollin-Music-Desktop/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Ryderwe/Sollin-Music-Desktop?style=flat-square"></a>
+  <a href="https://github.com/Ryderwe/Sollin-Music-Desktop/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Ryderwe/Sollin-Music-Desktop?include_prereleases&style=flat-square"></a>
   <img alt="Electron 28" src="https://img.shields.io/badge/Electron-28-47848F?logo=electron&logoColor=white&style=flat-square">
   <img alt="React 18" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=20232A&style=flat-square">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white&style=flat-square">
@@ -63,9 +63,9 @@ cp .env.example .env.local
 ```env
 VITE_APP_VERSION=1.3.1
 VITE_DEV_SERVER_PORT=5173
-VITE_GITHUB_REPO=Ryderwe/Sollin-Music-Desktop-OpenSource
-VITE_GITHUB_ANNOUNCEMENT_REPO=Ryderwe/Sollin-Music-Desktop-OpenSource
-VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER=
+VITE_GITHUB_REPO=Ryderwe/Sollin-Music-Desktop
+VITE_GITHUB_ANNOUNCEMENT_REPO=Ryderwe/Sollin-Music-Desktop
+VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER=1
 VITE_GITHUB_ANNOUNCEMENT_AUTHOR=ryderwe
 ```
 
@@ -75,7 +75,7 @@ VITE_GITHUB_ANNOUNCEMENT_AUTHOR=ryderwe
 - `VITE_DEV_SERVER_PORT`：Vite 开发服务器端口。
 - `VITE_GITHUB_REPO`：用于检查更新的 GitHub 仓库，格式为 `owner/repo`。
 - `VITE_GITHUB_ANNOUNCEMENT_REPO`：用于读取公告评论的 GitHub 仓库，格式为 `owner/repo`。默认使用 `VITE_GITHUB_REPO`。
-- `VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER`：用于读取公告的 Issue 编号。留空时关闭公告检查。
+- `VITE_GITHUB_ANNOUNCEMENT_ISSUE_NUMBER`：用于读取公告的 Issue 编号。官方默认使用 `1`，显式留空时关闭公告检查。
 - `VITE_GITHUB_ANNOUNCEMENT_AUTHOR`：只显示该 GitHub 用户发布的评论，默认 `ryderwe`。
 
 开源版本不需要配置私有服务地址。请不要把 `.env.local`、Token、证书、本机路径或内部接口文档提交到仓库。
@@ -482,6 +482,6 @@ MIT。详见 [LICENSE](LICENSE)。
 
 ## Star 趋势
 
-<a href="https://star-history.com/#Ryderwe/Sollin-Music-Desktop-OpenSource&Date">
-  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Ryderwe/Sollin-Music-Desktop-OpenSource&type=Date">
+<a href="https://star-history.com/#Ryderwe/Sollin-Music-Desktop&Date">
+  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Ryderwe/Sollin-Music-Desktop&type=Date">
 </a>

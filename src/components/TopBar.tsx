@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Search, User, Settings, Download, X, Flame, Clock3, Clock, Globe, LogOut, Calendar, Radio, Sun, Moon, Monitor, Check, Music2 } from 'lucide-react'
+import { Search, User, Settings, Download, X, Flame, Clock3, Clock, Globe, LogOut, Calendar, Radio, Sun, Moon, Monitor, Check, Music2, RefreshCw, ExternalLink } from 'lucide-react'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useDownloadStore } from '@/stores/downloadStore'
@@ -12,6 +12,8 @@ import neteaseAuthApi from '@/services/neteaseAuth'
 import { cn } from '@/utils/cn'
 import type { Platform, AudioQuality } from '@/types'
 import { QUALITY_NAMES, QUALITY_OPTIONS } from '@/constants/audio'
+import { APP_VERSION } from '@/config'
+import { checkGithubUpdate, type GithubUpdateInfo } from '@/services/githubUpdate'
 
 const PLATFORM_OPTIONS: { id: Platform | 'all'; name: string }[] = [
   { id: 'all', name: '全部' },
@@ -212,6 +214,146 @@ function ThemeToggleButton() {
               {theme === id && <Check className="w-4 h-4 flex-shrink-0 text-primary-500" />}
             </DropdownMenu.Item>
           ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
+function VersionStatusButton() {
+  const addToast = useUIStore((s) => s.addToast)
+  const [updateInfo, setUpdateInfo] = useState<GithubUpdateInfo | null>(null)
+  const [isChecking, setIsChecking] = useState(false)
+  const [hasChecked, setHasChecked] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadVersionStatus = async() => {
+      setIsChecking(true)
+      try {
+        const data = await checkGithubUpdate(APP_VERSION)
+        if (cancelled) return
+        setUpdateInfo(data)
+        setHasChecked(true)
+      } catch (error) {
+        console.debug('Top bar update check failed:', error)
+      } finally {
+        if (!cancelled) setIsChecking(false)
+      }
+    }
+
+    void loadVersionStatus()
+    return () => { cancelled = true }
+  }, [])
+
+  const refreshVersionStatus = async() => {
+    setIsChecking(true)
+    try {
+      const data = await checkGithubUpdate(APP_VERSION)
+      setUpdateInfo(data)
+      setHasChecked(true)
+      addToast({
+        type: data.hasUpdate ? 'info' : 'success',
+        message: data.hasUpdate ? `发现新版本 ${data.latestVersion}` : '已是最新版本',
+      })
+    } catch (error) {
+      console.error('Refresh update status failed:', error)
+      addToast({ type: 'error', message: '检查更新失败，请稍后重试' })
+    } finally {
+      setIsChecking(false)
+    }
+  }
+
+  const handleOpenDownload = () => {
+    if (!updateInfo?.downloadUrl) return
+    window.open(updateInfo.downloadUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  const hasUpdate = Boolean(updateInfo?.hasUpdate)
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'relative inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold transition-colors',
+            hasUpdate
+              ? 'bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/15'
+              : 'bg-gray-100/80 dark:bg-gray-800/60 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-gray-200/80 dark:hover:bg-gray-700/60',
+          )}
+          title={hasUpdate ? `发现新版本 v${updateInfo?.latestVersion}` : `当前版本 v${APP_VERSION}`}
+        >
+          <span>v{APP_VERSION}</span>
+          {isChecking ? (
+            <RefreshCw className="w-3 h-3 animate-spin" />
+          ) : hasUpdate ? (
+            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-gray-950" />
+          ) : null}
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="w-[320px] bg-white dark:bg-gray-800 rounded-xl shadow-xl p-3 z-[10001] border border-gray-200 dark:border-gray-700 animate-scale-in"
+          sideOffset={8}
+          align="end"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-[var(--text-primary)]">版本更新</p>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">当前版本 v{APP_VERSION}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void refreshVersionStatus()}
+              disabled={isChecking}
+              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+              title="重新检查"
+            >
+              <RefreshCw className={cn('w-4 h-4', isChecking && 'animate-spin')} />
+            </button>
+          </div>
+
+          <div className={cn(
+            'mt-3 rounded-xl border p-3',
+            hasUpdate
+              ? 'border-red-500/20 bg-red-500/5'
+              : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40',
+          )}>
+            {hasUpdate && updateInfo ? (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-red-600 dark:text-red-400">
+                      发现新版本 v{updateInfo.latestVersion}
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)] mt-0.5">建议下载最新版本安装包</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleOpenDownload}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-500 text-white text-xs hover:bg-primary-600 transition-colors flex-shrink-0"
+                  >
+                    更新
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="mt-3 max-h-40 overflow-y-auto space-y-1">
+                  {updateInfo.releaseNotes.map((line, index) => (
+                    <p key={`${line}-${index}`} className="text-xs leading-5 text-[var(--text-secondary)] break-words">
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                <span>{hasChecked ? '当前已是最新版本' : '正在检查更新状态'}</span>
+              </div>
+            )}
+          </div>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -506,6 +648,8 @@ export default function TopBar() {
 
       {/* Account Section */}
       <div className="flex items-center gap-2">
+        <VersionStatusButton />
+
         {/* Netease Account */}
         {isLoggedIn && userData ? (
           <div

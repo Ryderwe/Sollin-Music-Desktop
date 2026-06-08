@@ -25,6 +25,7 @@ import {
   ChevronDown,
   ChevronRight,
   Ban,
+  BellRing,
   Plus,
   ArrowUp,
   ArrowDown,
@@ -51,9 +52,19 @@ import SourceSwitchSettingsPanel from '@/components/settings/SourceSwitchSetting
 import { useSourceSwitchSettingsStore } from '@/stores/sourceSwitchSettingsStore'
 import { cn } from '@/utils/cn'
 import ImageCropModal from '@/components/modals/ImageCropModal'
+import UpdateModal from '@/components/modals/UpdateModal'
 import { QUALITY_NAMES, QUALITY_OPTIONS } from '@/constants/audio'
-import { APP_VERSION } from '@/config'
+import {
+  APP_VERSION,
+  GITHUB_ANNOUNCEMENT_AUTHOR,
+  GITHUB_ANNOUNCEMENT_ISSUE_NUMBER,
+  GITHUB_ANNOUNCEMENT_REPO,
+} from '@/config'
 import { checkGithubUpdate } from '@/services/githubUpdate'
+import {
+  fetchGithubAnnouncementHistory,
+  type GithubAnnouncement,
+} from '@/services/githubAnnouncement'
 import {
   buildWebDavBackupData,
   createWebDavBackupFileName,
@@ -124,6 +135,13 @@ const buildDownloadFileNamePreview = (enabled: boolean, parts: DownloadFileNameP
   return visibleParts.map((part) => DOWNLOAD_FILE_NAME_PART_LABELS[part]).join(visibleSeparator)
 }
 
+const formatGithubAnnouncementDate = (value?: string) => {
+  if (!value) return '未知时间'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '未知时间'
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
+
 const SETTINGS_NAV_GROUPS = [
   {
     id: 'group-sources',
@@ -165,6 +183,7 @@ const SETTINGS_NAV_GROUPS = [
       { id: 'close', label: '关闭行为', icon: Power },
       { id: 'shortcut', label: 'Global Shortcuts', icon: Keyboard },
       { id: 'update', label: '软件更新', icon: Sparkles },
+      { id: 'announcements', label: '公告历史', icon: BellRing },
       { id: 'about', label: '关于', icon: Music },
     ],
   },
@@ -423,10 +442,15 @@ export default function Settings() {
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<{
     hasUpdate: boolean
+    needForceUpdate?: boolean
     latestVersion: string
     changelog: string[]
     downloadUrl: string
   } | null>(null)
+  const [showUpdateModal, setShowUpdateModal] = useState(false)
+  const [isLoadingAnnouncementHistory, setIsLoadingAnnouncementHistory] = useState(false)
+  const [announcementHistory, setAnnouncementHistory] = useState<GithubAnnouncement[]>([])
+  const [announcementHistoryLoaded, setAnnouncementHistoryLoaded] = useState(false)
   const [lxSourceStatus, setLxSourceStatus] = useState<LxSourceStatus | null>(null)
   const [lxScriptPathInput, setLxScriptPathInput] = useState('')
   const [lxScriptUrlInput, setLxScriptUrlInput] = useState('')
@@ -955,6 +979,7 @@ export default function Settings() {
       const data = await checkGithubUpdate(APP_VERSION)
       const mapped = {
         hasUpdate: data.hasUpdate,
+        needForceUpdate: false,
         latestVersion: data.latestVersion,
         changelog: data.releaseNotes,
         downloadUrl: data.downloadUrl,
@@ -964,6 +989,7 @@ export default function Settings() {
 
       if (mapped.hasUpdate) {
         addToast({ type: 'info', message: `发现新版本 ${mapped.latestVersion}` })
+        setShowUpdateModal(true)
       } else {
         addToast({ type: 'success', message: '已是最新版本' })
       }
@@ -979,6 +1005,24 @@ export default function Settings() {
   const handleDownload = () => {
     if (updateInfo?.downloadUrl) {
       window.open(updateInfo.downloadUrl, '_blank')
+    }
+  }
+
+  const handleLoadAnnouncementHistory = async () => {
+    setIsLoadingAnnouncementHistory(true)
+    try {
+      const history = await fetchGithubAnnouncementHistory()
+      setAnnouncementHistory(history)
+      setAnnouncementHistoryLoaded(true)
+      addToast({
+        type: history.length ? 'success' : 'info',
+        message: history.length ? `已加载 ${history.length} 条公告` : '暂无公告',
+      })
+    } catch (error) {
+      console.error('Load announcement history failed:', error)
+      addToast({ type: 'error', message: '公告历史加载失败，请稍后重试' })
+    } finally {
+      setIsLoadingAnnouncementHistory(false)
     }
   }
 
@@ -4176,6 +4220,88 @@ export default function Settings() {
       </section>
 
 
+      {/* Announcement History */}
+      <section id="section-announcements" className="card overflow-hidden scroll-mt-6" hidden={!activeGroupSectionIds.includes('announcements')}>
+        <div className="p-4 border-b border-gray-100 dark:border-gray-800">
+          <h2 className="font-semibold flex items-center gap-2">
+            <BellRing className="w-4 h-4" />
+            公告历史
+          </h2>
+          <p className="text-sm text-[var(--text-muted)] mt-1">
+            从 GitHub Issue 评论读取，只显示 {GITHUB_ANNOUNCEMENT_AUTHOR} 发布的公告。
+          </p>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="flex items-center justify-between gap-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 p-4">
+            <div className="min-w-0">
+              <p className="font-medium">公告来源</p>
+              <p className="text-sm text-[var(--text-muted)] break-all">
+                {GITHUB_ANNOUNCEMENT_REPO}
+                {GITHUB_ANNOUNCEMENT_ISSUE_NUMBER ? ` #${GITHUB_ANNOUNCEMENT_ISSUE_NUMBER}` : ' 未配置 Issue'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleLoadAnnouncementHistory()}
+              disabled={isLoadingAnnouncementHistory || !GITHUB_ANNOUNCEMENT_ISSUE_NUMBER}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2 rounded-xl transition-colors flex-shrink-0',
+                isLoadingAnnouncementHistory || !GITHUB_ANNOUNCEMENT_ISSUE_NUMBER
+                  ? 'bg-gray-100 dark:bg-gray-800 text-[var(--text-muted)] cursor-not-allowed'
+                  : 'bg-primary-500 text-white hover:bg-primary-600'
+              )}
+            >
+              <RefreshCw className={cn('w-4 h-4', isLoadingAnnouncementHistory && 'animate-spin')} />
+              {isLoadingAnnouncementHistory ? '加载中...' : '刷新公告'}
+            </button>
+          </div>
+
+          {!GITHUB_ANNOUNCEMENT_ISSUE_NUMBER ? (
+            <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 text-sm text-[var(--text-muted)]">
+              当前未配置公告 Issue 编号。
+            </div>
+          ) : announcementHistory.length > 0 ? (
+            <div className="space-y-3">
+              {announcementHistory.map((announcement) => (
+                <article
+                  key={`${announcement.id}:${announcement.updatedAt || announcement.createdAt || ''}`}
+                  className="rounded-xl border border-gray-200 dark:border-gray-700 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium">公告 #{announcement.id}</p>
+                      <p className="text-xs text-[var(--text-muted)] mt-1">
+                        {announcement.author} · {formatGithubAnnouncementDate(announcement.updatedAt || announcement.createdAt)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => window.open(announcement.htmlUrl, '_blank', 'noopener,noreferrer')}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-primary-500 hover:bg-primary-500/10 transition-colors flex-shrink-0"
+                    >
+                      查看原文
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <pre className="mt-3 max-h-56 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-[var(--text-secondary)] font-sans">
+                    {announcement.body}
+                  </pre>
+                </article>
+              ))}
+            </div>
+          ) : announcementHistoryLoaded ? (
+            <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 text-sm text-[var(--text-muted)]">
+              暂无由 {GITHUB_ANNOUNCEMENT_AUTHOR} 发布的公告评论。
+            </div>
+          ) : (
+            <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 text-sm text-[var(--text-muted)]">
+              点击刷新公告查看历史公告。
+            </div>
+          )}
+        </div>
+      </section>
+
+
       {/* About */}
       <section id="section-about" className="card overflow-hidden scroll-mt-6" hidden={!activeGroupSectionIds.includes('about')}>
         <div className="p-4 border-b border-gray-100 dark:border-gray-800">
@@ -4421,6 +4547,11 @@ export default function Settings() {
           setCropModalOpen(false)
           setCropImageSrc(null)
         }}
+      />
+      <UpdateModal
+        isOpen={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
+        updateInfo={updateInfo}
       />
       </div>
     </div>
