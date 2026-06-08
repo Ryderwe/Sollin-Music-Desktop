@@ -1,4 +1,4 @@
-# Sollin
+# Sollin｜A music playback client that is compatible with both online and local music.
 
 <p>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square"></a>
@@ -9,6 +9,7 @@
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white&style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square">
 </p>
+
 
 [中文](README.md) | English
 
@@ -28,6 +29,7 @@ Sollin Desktop has been open source since version `1.3.1`. This open-source edit
 - [Update Checking](#update-checking)
 - [Announcement Configuration](#announcement-configuration)
 - [Source Configuration](#source-configuration)
+- [Preview](#preview)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
@@ -279,6 +281,14 @@ In the desktop app, open Settings and use source management to:
 
 Only use source scripts, music APIs and content that you are allowed to use.
 
+## Preview
+
+- ![AM Player](images/am播放界面.png)
+- ![Online Home](images/在线首页.png)
+- ![Local Home](images/本地首页.png)
+- ![Classic Player](images/经典播放界面.png)
+- ![Settings](images/设置首页.png)
+
 ## Features
 
 ### Playback
@@ -482,6 +492,10 @@ MIT. See [LICENSE](LICENSE).
 
 ## Star History
 
-<a href="https://star-history.com/#Ryderwe/Sollin-Music-Desktop&Date">
-  <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Ryderwe/Sollin-Music-Desktop&type=Date">
+<a href="https://www.star-history.com/?type=date&repos=Ryderwe%2FSollin-Music-Desktop">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Ryderwe/Sollin-Music-Desktop&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Ryderwe/Sollin-Music-Desktop&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Ryderwe/Sollin-Music-Desktop&type=date&legend=top-left" />
+ </picture>
 </a>
