@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fa2d48"/>
+      <stop offset="100%" style="stop-color:#ec4899"/>
+    </linearGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#grad)"/>
+  <!-- S letter with music note style -->
+  <path d="M320 160c0-35.3-28.7-64-64-64h-48c-35.3 0-64 28.7-64 64v24c0 35.3 28.7 64 64 64h48c17.7 0 32 14.3 32 32v24c0 17.7-14.3 32-32 32h-48c-17.7 0-32-14.3-32-32" 
+        fill="none" 
+        stroke="white" 
+        stroke-width="40" 
+        stroke-linecap="round"/>
+  <!-- Music note decoration -->
+  <circle cx="340" cy="140" r="24" fill="white"/>
+  <rect x="356" y="100" width="8" height="80" rx="4" fill="white"/>
+  <path d="M364 100c20-10 40-5 50 10" fill="none" stroke="white" stroke-width="8" stroke-linecap="round"/>
+</svg>

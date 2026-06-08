@@ -1,0 +1,5 @@
+export { fetchKugouLyric } from './kugou'
+export { fetchQqLyric } from './qq'
+export { fetchNeteaseLyric } from './netease'
+export { toLyricData } from './converter'
+export type { LyricsResult, LyricsLine, LyricsWord } from './types'

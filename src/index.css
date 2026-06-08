@@ -1,0 +1,251 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary: 250 45 72;
+    --color-background: 255 255 255;
+    --color-foreground: 0 0 0;
+    --color-muted: 107 114 128;
+    --color-border: 229 231 235;
+    --color-card: 255 255 255;
+    --panel-bg-opacity: 0.5;
+    --panel-bg: rgb(255 255 255 / var(--panel-bg-opacity));
+    --panel-backdrop-blur: 24px;
+    --text-primary: rgba(0, 0, 0, 0.9);
+    --text-secondary: rgba(0, 0, 0, 0.75);
+    --text-muted: rgba(0, 0, 0, 0.55);
+    --app-font-family: ;
+  }
+
+  html, body {
+    font-family: var(--app-font-family, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  }
+
+  .dark {
+    --color-primary: 250 45 72;
+    --color-background: 28 28 30;
+    --color-foreground: 255 255 255;
+    --color-muted: 156 163 175;
+    --color-border: 55 65 81;
+    --color-card: 44 44 46;
+    --panel-bg-opacity: 0.7;
+    --panel-bg: rgb(28 28 30 / var(--panel-bg-opacity));
+    --panel-backdrop-blur: 24px;
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.92);
+    --text-muted: rgba(255, 255, 255, 0.78);
+  }
+}
+
+@layer utilities {
+  [data-bg-mode="image"] .backdrop-blur-xs,
+  [data-bg-mode="image"] .backdrop-blur-sm,
+  [data-bg-mode="image"] .backdrop-blur,
+  [data-bg-mode="image"] .backdrop-blur-md,
+  [data-bg-mode="image"] .backdrop-blur-lg,
+  [data-bg-mode="image"] .backdrop-blur-xl,
+  [data-bg-mode="image"] .backdrop-blur-2xl,
+  [data-bg-mode="image"] .backdrop-blur-3xl,
+  [data-bg-mode="image"] [class*="backdrop-blur-"] {
+    backdrop-filter: blur(var(--panel-backdrop-blur)) !important;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-gray-200 dark:border-gray-700;
+  }
+
+  body {
+    @apply bg-white dark:bg-[#1c1c1e];
+    color: var(--text-primary);
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Prevent text selection and copying */
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+  }
+
+  /* Allow text selection in input fields */
+  input,
+  textarea {
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400 dark:bg-gray-500;
+  }
+}
+
+@layer components {
+
+  /* Glass effect */
+  .glass {
+    @apply bg-white/50 dark:bg-black/60 backdrop-blur-2xl;
+  }
+
+  /* Glass card */
+  .glass-card {
+    @apply bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl rounded-2xl border border-white/20 dark:border-gray-700/30;
+  }
+
+  /* Card styles */
+  .card {
+    @apply bg-white/60 dark:bg-[#2c2c2e]/80 backdrop-blur-xl rounded-xl shadow-lg overflow-hidden;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:scale-105 hover:shadow-xl;
+  }
+
+  /* Button styles */
+  .btn {
+    @apply inline-flex items-center justify-center font-medium transition-all duration-200;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn rounded-full bg-primary-500 text-white hover:bg-primary-600 px-4 py-1.5 text-sm shadow-sm hover:shadow-md;
+  }
+
+  .btn-secondary {
+    @apply btn rounded-full text-sm px-3.5 py-1.5 backdrop-blur-xl border;
+    background: rgba(255, 255, 255, 0.5);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: var(--text-secondary);
+  }
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.7);
+  }
+  :root.dark .btn-secondary {
+    background: rgba(44, 44, 46, 0.5);
+    border-color: rgba(120, 120, 128, 0.2);
+  }
+  :root.dark .btn-secondary:hover {
+    background: rgba(44, 44, 46, 0.7);
+  }
+
+  .btn-ghost {
+    @apply btn rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-2;
+    color: var(--text-secondary);
+  }
+
+  .btn-icon {
+    @apply btn rounded-full p-1.5 backdrop-blur-xl border;
+    background: rgba(255, 255, 255, 0.4);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: var(--text-secondary);
+  }
+  .btn-icon:hover {
+    background: rgba(255, 255, 255, 0.6);
+  }
+  :root.dark .btn-icon {
+    background: rgba(44, 44, 46, 0.4);
+    border-color: rgba(120, 120, 128, 0.15);
+  }
+  :root.dark .btn-icon:hover {
+    background: rgba(44, 44, 46, 0.6);
+  }
+
+  /* Input styles */
+  .input {
+    @apply w-full px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700;
+    @apply bg-white dark:bg-gray-800;
+    color: var(--text-primary);
+    @apply placeholder-gray-400 dark:placeholder-gray-500;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply transition-all duration-200;
+  }
+
+  /* Sidebar styles */
+  .sidebar-item {
+    @apply flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm;
+    color: var(--text-secondary);
+    @apply hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer;
+  }
+
+  .sidebar-item.active {
+    @apply bg-primary-500/10 text-primary-500 font-medium;
+  }
+
+  /* Song row */
+  .song-row {
+    @apply flex items-center gap-4 px-4 py-3 rounded-lg;
+    @apply hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors cursor-pointer;
+  }
+
+  .song-row.playing {
+    @apply bg-primary-500/10;
+  }
+
+  /* Animation */
+  .animate-spin-slow {
+    animation: spin 8s linear infinite;
+  }
+
+}
+
+@layer utilities {
+
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary-500 to-pink-500 bg-clip-text text-transparent;
+  }
+
+  /* Drag region for window controls */
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Line clamp */
+  .line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
