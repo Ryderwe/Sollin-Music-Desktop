@@ -211,6 +211,14 @@ function isPlaybackAborted(error: unknown): boolean {
   return false
 }
 
+export const MAX_PRELOAD_SONG_COUNT = 3
+
+function normalizePreloadSongCount(value: unknown): number {
+  const numericValue = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numericValue)) return 0
+  return Math.max(0, Math.min(MAX_PRELOAD_SONG_COUNT, Math.round(numericValue)))
+}
+
 function getNextSongAfterFailure(
   playlist: Song[],
   failedSong: Song,
@@ -274,6 +282,7 @@ interface StartPlaybackOptions {
   explicitSourceSwitch?: string | null
   explicitSourceSwitchInfo?: SourceSwitchInfo | null
   failedSongKeys?: string[]
+  preserveUpcomingPlaybackPlan?: boolean
 }
 
 // Audio output device type
@@ -330,6 +339,7 @@ interface PlayerStore {
   playMode: PlayMode
   isLoading: boolean
   quality: AudioQuality
+  preloadSongCount: number
   currentQuality: AudioQuality | null // Actual quality of currently playing song
   manualQualityOverride: boolean // Whether currentQuality was set by manual user switch
   sourceSwitch: string | null // Source switch info (e.g., "netease -> kuwo")
@@ -372,6 +382,7 @@ interface PlayerStore {
   toggleMute: () => void
   setPlayMode: (mode: PlayMode) => void
   setQuality: (quality: AudioQuality) => void
+  setPreloadSongCount: (count: number) => void
   setAutoTemporarySourceSwitch: (enabled: boolean) => void
   setPlaylist: (songs: Song[], playlistId?: string) => void
   addToQueue: (song: Song) => void
@@ -424,6 +435,11 @@ export const usePlayerStore = create<PlayerStore>()(
       let loadTimeoutId: number | null = null
       let sleepTimeoutId: number | null = null
       let sleepIntervalId: number | null = null
+      let upcomingPlaybackPlan: Song[] = []
+      let upcomingPlaybackPlanOriginKey: string | null = null
+      let upcomingPlaybackPlanMode: PlayMode | null = null
+      let upcomingPlaybackPlanPlaylistSignature: string | null = null
+      let activePreloadRunId = 0
       const pendingAudioCacheJobs = new Map<string, PendingAudioCacheJob>()
       let flushPendingAudioCachePromise: Promise<void> | null = null
 
@@ -431,6 +447,16 @@ export const usePlayerStore = create<PlayerStore>()(
         if (loadTimeoutId == null) return
         window.clearTimeout(loadTimeoutId)
         loadTimeoutId = null
+      }
+
+      const getPlaylistSignature = (songs: Song[]) => songs.map(getSongKey).join('|')
+
+      const clearUpcomingPlaybackPlan = () => {
+        upcomingPlaybackPlan = []
+        upcomingPlaybackPlanOriginKey = null
+        upcomingPlaybackPlanMode = null
+        upcomingPlaybackPlanPlaylistSignature = null
+        activePreloadRunId += 1
       }
 
       const getAllowedSongs = (songs: Song[]) => (
@@ -459,6 +485,99 @@ export const usePlayerStore = create<PlayerStore>()(
 
         const startIndex = currentIndex >= 0 ? currentIndex : -1
         return allowedSongs[(startIndex + 1) % allowedSongs.length] || null
+      }
+
+      const isUpcomingPlaybackPlanValid = (
+        currentSong: Song,
+        playlist: Song[],
+        playMode: PlayMode,
+      ) => (
+        upcomingPlaybackPlanOriginKey === getSongKey(currentSong)
+        && upcomingPlaybackPlanMode === playMode
+        && upcomingPlaybackPlanPlaylistSignature === getPlaylistSignature(playlist)
+      )
+
+      const resetUpcomingPlaybackPlan = (
+        currentSong: Song,
+        playlist: Song[],
+        playMode: PlayMode,
+        upcomingSongs: Song[] = [],
+      ) => {
+        upcomingPlaybackPlan = upcomingSongs
+        upcomingPlaybackPlanOriginKey = getSongKey(currentSong)
+        upcomingPlaybackPlanMode = playMode
+        upcomingPlaybackPlanPlaylistSignature = getPlaylistSignature(playlist)
+      }
+
+      const pickShuffleNextSong = (playlist: Song[]) => {
+        if (playlist.length === 0) return null
+        return playlist[Math.floor(Math.random() * playlist.length)] || null
+      }
+
+      const getNextSongForPlayback = (
+        playlist: Song[],
+        currentSong: Song,
+        playMode: PlayMode,
+      ) => {
+        if (playlist.length === 0) return null
+
+        if (playMode === 'shuffle') {
+          return pickShuffleNextSong(playlist)
+        }
+
+        const currentIndex = playlist.findIndex((song) => isSameSong(song, currentSong))
+
+        if (playMode === 'single') {
+          return currentIndex >= 0 ? playlist[currentIndex] : currentSong
+        }
+
+        return playlist[(currentIndex + 1) % playlist.length] || null
+      }
+
+      const fillUpcomingPlaybackPlan = (
+        currentSong: Song,
+        playlist: Song[],
+        playMode: PlayMode,
+        count: number,
+      ) => {
+        if (count <= 0) {
+          resetUpcomingPlaybackPlan(currentSong, playlist, playMode, [])
+          return []
+        }
+
+        if (!isUpcomingPlaybackPlanValid(currentSong, playlist, playMode)) {
+          resetUpcomingPlaybackPlan(currentSong, playlist, playMode, [])
+        }
+
+        if (upcomingPlaybackPlan.length > count) {
+          upcomingPlaybackPlan = upcomingPlaybackPlan.slice(0, count)
+        }
+
+        while (upcomingPlaybackPlan.length < count) {
+          const cursorSong = upcomingPlaybackPlan[upcomingPlaybackPlan.length - 1] || currentSong
+          const nextSong = getNextSongForPlayback(playlist, cursorSong, playMode)
+          if (!nextSong) break
+          upcomingPlaybackPlan = [...upcomingPlaybackPlan, nextSong]
+        }
+
+        return upcomingPlaybackPlan
+      }
+
+      const consumeUpcomingPlaybackPlan = (
+        currentSong: Song,
+        playlist: Song[],
+        playMode: PlayMode,
+      ) => {
+        if (!isUpcomingPlaybackPlanValid(currentSong, playlist, playMode)) {
+          clearUpcomingPlaybackPlan()
+          return null
+        }
+
+        const [nextSong, ...remainingSongs] = upcomingPlaybackPlan
+        if (!nextSong) return null
+
+        resetUpcomingPlaybackPlan(nextSong, playlist, playMode, remainingSongs)
+        return nextSong
       }
 
       const clearSleepTimerHandles = () => {
@@ -606,6 +725,50 @@ export const usePlayerStore = create<PlayerStore>()(
         }
       }
 
+      const preloadUpcomingSongUrls = async(requestId: number) => {
+        const state = get()
+        const currentSong = state.currentSong
+        const preloadCount = normalizePreloadSongCount(state.preloadSongCount)
+        const playlist = getAllowedSongs(state.playlist)
+
+        if (!currentSong || preloadCount <= 0 || playlist.length === 0) {
+          activePreloadRunId += 1
+          return
+        }
+
+        const songsToPreload = fillUpcomingPlaybackPlan(currentSong, playlist, state.playMode, preloadCount)
+        if (songsToPreload.length === 0) return
+
+        const preloadRunId = ++activePreloadRunId
+        const requestedQuality = state.quality
+        const allowTempSourceFallback = state.autoTemporarySourceSwitch
+        const originSongKey = getSongKey(currentSong)
+
+        for (const song of songsToPreload) {
+          const latestState = get()
+          const latestSong = latestState.currentSong
+          if (
+            preloadRunId !== activePreloadRunId
+            || requestId !== activePlaybackRequestId
+            || !latestSong
+            || getSongKey(latestSong) !== originSongKey
+          ) {
+            return
+          }
+
+          if (song.platform === 'local') continue
+
+          try {
+            await resolveSongPlaybackResource(song, {
+              quality: requestedQuality,
+              allowTempSourceFallback,
+            })
+          } catch (error) {
+            console.warn('[PlayerStore] Preload song URL failed:', song.name, error)
+          }
+        }
+      }
+
       const updateTrayInfo = (song: Song) => {
         if (!window.electronAPI) return
         window.electronAPI.updatePlayerInfo({
@@ -747,6 +910,7 @@ export const usePlayerStore = create<PlayerStore>()(
             clearLoadTimeout()
             syncDurationFromPlayerCore()
             set({ isPlaying: true, isLoading: false })
+            void preloadUpcomingSongUrls(activePlaybackRequestId)
             break
           case 'pause':
             if (!isCurrentPlaybackEvent(event)) break
@@ -800,6 +964,10 @@ export const usePlayerStore = create<PlayerStore>()(
         activeRequestedQuality = requestedQuality
         activeAllowTempSourceFallback = allowTempSourceFallback
         activeAttemptContext = options.attemptContext ?? { attemptedSongKeys: [] }
+        activePreloadRunId += 1
+        if (!options.preserveUpcomingPlaybackPlan) {
+          clearUpcomingPlaybackPlan()
+        }
         resetRecoveryState(song, { preserveRetryState: options.preserveRetryState })
         if (Array.isArray(options.failedSongKeys)) {
           for (const key of options.failedSongKeys) activeFailedSongKeys.add(key)
@@ -976,6 +1144,7 @@ export const usePlayerStore = create<PlayerStore>()(
       playMode: 'sequence',
       isLoading: false,
       quality: '320k',
+      preloadSongCount: 0,
       currentQuality: null,
       manualQualityOverride: false,
       sourceSwitch: null,
@@ -1488,21 +1657,14 @@ export const usePlayerStore = create<PlayerStore>()(
         const playlist = getAllowedSongs(get().playlist)
         if (playlist.length === 0 || !currentSong) return
 
-        const currentIndex = playlist.findIndex((song) => isSameSong(song, currentSong))
-
-        let nextIndex: number
-
-        if (playMode === 'shuffle') {
-          nextIndex = Math.floor(Math.random() * playlist.length)
-        } else if (playMode === 'single') {
-          nextIndex = currentIndex >= 0 ? currentIndex : 0
-        } else {
-          nextIndex = (currentIndex + 1) % playlist.length
-        }
-
-        const nextSong = playlist[nextIndex]
+        const plannedNextSong = consumeUpcomingPlaybackPlan(currentSong, playlist, playMode)
+        const nextSong = plannedNextSong ?? getNextSongForPlayback(playlist, currentSong, playMode)
         if (nextSong) {
-          get().playSong(nextSong, playlist, get().playlistId || undefined)
+          void startPlayback(nextSong, {
+            playlist,
+            playlistId: get().playlistId || undefined,
+            preserveUpcomingPlaybackPlan: Boolean(plannedNextSong),
+          })
         }
       },
 
@@ -1571,11 +1733,35 @@ export const usePlayerStore = create<PlayerStore>()(
         }
       },
 
-      setPlayMode: (mode) => set({ playMode: mode }),
+      setPlayMode: (mode) => {
+        clearUpcomingPlaybackPlan()
+        set({ playMode: mode })
+        if (get().isPlaying) {
+          void preloadUpcomingSongUrls(activePlaybackRequestId)
+        }
+      },
 
-      setQuality: (quality) => set({ quality }),
+      setQuality: (quality) => {
+        activePreloadRunId += 1
+        set({ quality })
+        if (get().isPlaying) {
+          void preloadUpcomingSongUrls(activePlaybackRequestId)
+        }
+      },
+      setPreloadSongCount: (count) => {
+        const preloadSongCount = normalizePreloadSongCount(count)
+        clearUpcomingPlaybackPlan()
+        set({ preloadSongCount })
+        if (get().isPlaying) {
+          void preloadUpcomingSongUrls(activePlaybackRequestId)
+        }
+      },
       setAutoTemporarySourceSwitch: (enabled) => {
+        activePreloadRunId += 1
         set({ autoTemporarySourceSwitch: enabled })
+        if (get().isPlaying) {
+          void preloadUpcomingSongUrls(activePlaybackRequestId)
+        }
         // Keep the structured source-switch settings in sync so UI toggles in either panel
         // (legacy single switch or new pipeline panel) stay consistent.
         try {
@@ -1586,7 +1772,11 @@ export const usePlayerStore = create<PlayerStore>()(
       },
 
       setPlaylist: (songs, playlistId) => {
+        clearUpcomingPlaybackPlan()
         set({ playlist: getAllowedSongs(songs), playlistId: playlistId || null })
+        if (get().isPlaying) {
+          void preloadUpcomingSongUrls(activePlaybackRequestId)
+        }
       },
 
       addToQueue: (song) => {
@@ -1605,17 +1795,26 @@ export const usePlayerStore = create<PlayerStore>()(
 
         const newPlaylist = [...playlist]
         newPlaylist.splice(currentIndex + 1, 0, song)
+        clearUpcomingPlaybackPlan()
         set({ playlist: newPlaylist })
+        if (get().isPlaying) {
+          void preloadUpcomingSongUrls(activePlaybackRequestId)
+        }
       },
 
       removeFromQueue: (index) => {
         const { playlist } = get()
         const newPlaylist = [...playlist]
         newPlaylist.splice(index, 1)
+        clearUpcomingPlaybackPlan()
         set({ playlist: newPlaylist })
+        if (get().isPlaying) {
+          void preloadUpcomingSongUrls(activePlaybackRequestId)
+        }
       },
 
       clearQueue: () => {
+        clearUpcomingPlaybackPlan()
         set({ playlist: [], playlistId: null })
       },
 
@@ -1639,7 +1838,11 @@ export const usePlayerStore = create<PlayerStore>()(
           }
         }
 
+        clearUpcomingPlaybackPlan()
         set({ playlist: shuffled })
+        if (get().isPlaying) {
+          void preloadUpcomingSongUrls(activePlaybackRequestId)
+        }
       },
 
       switchSource: async (platform: Platform) => {
@@ -2078,6 +2281,7 @@ export const usePlayerStore = create<PlayerStore>()(
         isMuted: state.isMuted,
         playMode: state.playMode,
         quality: state.quality,
+        preloadSongCount: state.preloadSongCount,
         autoTemporarySourceSwitch: state.autoTemporarySourceSwitch,
         audioEffects: state.audioEffects,
         audioOutputDeviceId: state.audioOutputDeviceId,
@@ -2116,6 +2320,9 @@ export const usePlayerStore = create<PlayerStore>()(
               // settings take effect immediately after restart without waiting for the user to
               // touch a slider.
               applyAudioEffectsSettings(state.audioEffects)
+            }
+            if (state) {
+              state.preloadSongCount = normalizePreloadSongCount(state.preloadSongCount)
             }
             // Player storage uses an async adapter, so setAudioRef (called during App mount) can
             // run before the persisted device id lands in the store.  Re-apply it here to cover

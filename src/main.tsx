@@ -14,13 +14,13 @@ import { useSourceSwitchSettingsStore } from '@/stores/sourceSwitchSettingsStore
     const settings = useSourceSwitchSettingsStore.getState()
     const playerState = usePlayerStore.getState()
     if (playerState.autoTemporarySourceSwitch !== settings.enabled) {
-      usePlayerStore.setState({ autoTemporarySourceSwitch: settings.enabled })
+      usePlayerStore.getState().setAutoTemporarySourceSwitch(settings.enabled)
     }
     useSourceSwitchSettingsStore.subscribe((state, prev) => {
       if (state.enabled === prev.enabled) return
       const { autoTemporarySourceSwitch } = usePlayerStore.getState()
       if (autoTemporarySourceSwitch !== state.enabled) {
-        usePlayerStore.setState({ autoTemporarySourceSwitch: state.enabled })
+        usePlayerStore.getState().setAutoTemporarySourceSwitch(state.enabled)
       }
     })
   } catch (error) {

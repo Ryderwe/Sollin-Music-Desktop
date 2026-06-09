@@ -237,6 +237,7 @@ type PersistedPlayerState = {
   volume?: number
   playMode?: string
   quality?: string
+  preloadSongCount?: number
 }
 
 type DownloadFileNamePart = 'artist' | 'album' | 'title'

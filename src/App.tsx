@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
 import Layout from '@/components/Layout'
-import { usePlayerStore } from '@/stores/playerStore'
+import { MAX_PRELOAD_SONG_COUNT, usePlayerStore } from '@/stores/playerStore'
 import { useUserStore } from '@/stores/userStore'
 import { useUIStore } from '@/stores/uiStore'
 import CreatePlaylistModal from '@/components/modals/CreatePlaylistModal'
@@ -54,6 +54,12 @@ const ArtistDetail = lazy(() => import('@/pages/ArtistDetail'))
 const AlbumDetail = lazy(() => import('@/pages/AlbumDetail'))
 const PlaylistExplore = lazy(() => import('@/pages/PlaylistExplore'))
 const DailyRecommend = lazy(() => import('@/pages/DailyRecommend'))
+
+const normalizePreloadSongCount = (value: unknown) => {
+  const numericValue = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numericValue)) return 0
+  return Math.max(0, Math.min(MAX_PRELOAD_SONG_COUNT, Math.round(numericValue)))
+}
 
 function App() {
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -232,6 +238,9 @@ function App() {
           volume: typeof state.volume === 'number' ? state.volume : current.volume,
           playMode: (state.playMode as any) ?? current.playMode,
           quality: (state.quality as any) ?? current.quality,
+          preloadSongCount: state.preloadSongCount == null
+            ? current.preloadSongCount
+            : normalizePreloadSongCount(state.preloadSongCount),
         })
       }
     })
@@ -262,6 +271,7 @@ function App() {
         volume: state.volume,
         playMode: state.playMode,
         quality: state.quality,
+        preloadSongCount: state.preloadSongCount,
       })
     }
 
@@ -269,7 +279,7 @@ function App() {
     let lastSerialized = ''
     const unsubscribe = usePlayerStore.subscribe(() => {
       const state = usePlayerStore.getState()
-      const key = `${state.playlistId}|${state.volume}|${state.playMode}|${state.quality}|${state.currentSong?.id}|${state.playlist.length}`
+      const key = `${state.playlistId}|${state.volume}|${state.playMode}|${state.quality}|${state.preloadSongCount}|${state.currentSong?.id}|${state.playlist.length}`
       if (key === lastSerialized) return
       lastSerialized = key
       if (timer) window.clearTimeout(timer)

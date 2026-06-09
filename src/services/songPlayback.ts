@@ -18,6 +18,14 @@ export interface SongPlaybackLyrics {
   lyrics: string | null
 }
 
+interface CachedSongPlaybackUrl {
+  url: string
+  actualQuality?: AudioQuality | null
+  sourceSwitch?: string | null
+  toggleSong?: Song | null
+  toggleAlternatives?: Song[]
+}
+
 export function buildLocalSongPlaybackLyrics(lrc: string | null | undefined): SongPlaybackLyrics {
   const lyricData = buildPlaybackLyricData(lrc)
 
@@ -66,12 +74,32 @@ export async function resolveSongPlaybackFallbackUrl(url: string) {
   return resolveRendererPlaybackUrl(url)
 }
 
-function getCachedSongUrl(song: Song, quality: AudioQuality) {
-  return cache.get<string>('songUrl', song.platform, song.id, quality)
+function getCachedSongUrl(song: Song, quality: AudioQuality): CachedSongPlaybackUrl | null {
+  const cached = cache.get<string | CachedSongPlaybackUrl>('songUrl', song.platform, song.id, quality)
+  if (!cached) return null
+  if (typeof cached === 'string') return { url: cached }
+  if (typeof cached.url === 'string' && cached.url) return cached
+  return null
 }
 
-function saveCachedSongUrl(song: Song, quality: AudioQuality, url: string) {
-  cache.set('songUrl', url, undefined, song.platform, song.id, quality)
+function saveCachedSongUrl(
+  song: Song,
+  requestedQuality: AudioQuality,
+  actualQuality: AudioQuality,
+  url: string,
+  metadata?: Pick<CachedSongPlaybackUrl, 'sourceSwitch' | 'toggleSong' | 'toggleAlternatives'>,
+) {
+  const payload: CachedSongPlaybackUrl = {
+    url,
+    actualQuality,
+    sourceSwitch: metadata?.sourceSwitch ?? null,
+    toggleSong: metadata?.toggleSong ?? null,
+    toggleAlternatives: Array.isArray(metadata?.toggleAlternatives) ? metadata.toggleAlternatives : [],
+  }
+  cache.set('songUrl', payload, undefined, song.platform, song.id, requestedQuality)
+  if (requestedQuality !== actualQuality) {
+    cache.set('songUrl', payload, undefined, song.platform, song.id, actualQuality)
+  }
 }
 
 export function clearCachedSongUrl(song: Song | null | undefined) {
@@ -122,9 +150,22 @@ export async function resolveSongPlaybackResource(
   let sourceSwitch: string | null = null
   let toggleSong: Song | null = null
   let toggleAlternatives: Song[] = []
+  let cachedPlaybackUrl: CachedSongPlaybackUrl | null = null
 
   if (!requestUrl && !refresh && !skipOrigin) {
-    requestUrl = getCachedSongUrl(song, options.quality)
+    cachedPlaybackUrl = getCachedSongUrl(song, options.quality)
+    if ((cachedPlaybackUrl?.sourceSwitch || cachedPlaybackUrl?.toggleSong) && options.allowTempSourceFallback === false) {
+      cachedPlaybackUrl = null
+    }
+    requestUrl = cachedPlaybackUrl?.url ?? null
+    if (cachedPlaybackUrl) {
+      actualQuality = cachedPlaybackUrl.actualQuality ?? options.quality
+      sourceSwitch = cachedPlaybackUrl.sourceSwitch ?? null
+      toggleSong = cachedPlaybackUrl.toggleSong ?? null
+      toggleAlternatives = Array.isArray(cachedPlaybackUrl.toggleAlternatives)
+        ? cachedPlaybackUrl.toggleAlternatives
+        : []
+    }
   }
 
   if (!requestUrl) {
@@ -147,7 +188,11 @@ export async function resolveSongPlaybackResource(
     sourceSwitch = result.sourceSwitch || null
     toggleSong = result.toggleSong || null
     toggleAlternatives = Array.isArray(result.toggleAlternatives) ? result.toggleAlternatives : []
-    saveCachedSongUrl(song, result.quality, result.url)
+    saveCachedSongUrl(song, options.quality, result.quality, result.url, {
+      sourceSwitch,
+      toggleSong,
+      toggleAlternatives,
+    })
   }
 
   return {

@@ -36,7 +36,7 @@ import {
 } from 'lucide-react'
 import { useUserStore } from '@/stores/userStore'
 import { useUIStore } from '@/stores/uiStore'
-import { usePlayerStore } from '@/stores/playerStore'
+import { MAX_PRELOAD_SONG_COUNT, usePlayerStore } from '@/stores/playerStore'
 import { useFeatureStore } from '@/stores/featureStore'
 import {
   DOWNLOAD_FILE_NAME_PARTS,
@@ -375,6 +375,8 @@ export default function Settings() {
   const {
     quality,
     setQuality,
+    preloadSongCount,
+    setPreloadSongCount,
     setAutoTemporarySourceSwitch,
     audioOutputDeviceId,
     availableAudioDevices,
@@ -3753,6 +3755,29 @@ export default function Settings() {
           ))}
         </div>
         <div className="px-4 pb-4">
+          <div className="mb-4 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/30 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">播放链接预加载</p>
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  当前：{preloadSongCount === 0 ? '关闭' : `${preloadSongCount} 首`}
+                </p>
+              </div>
+              <span className="min-w-14 rounded-lg bg-white dark:bg-gray-800 px-2 py-1 text-center text-sm font-medium text-[var(--text-secondary)]">
+                {preloadSongCount === 0 ? '关闭' : `${preloadSongCount}/${MAX_PRELOAD_SONG_COUNT}`}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={MAX_PRELOAD_SONG_COUNT}
+              step={1}
+              value={preloadSongCount}
+              onChange={(event) => setPreloadSongCount(Number(event.target.value))}
+              className="mt-4 w-full accent-primary-500"
+              aria-label="播放链接预加载歌曲数量"
+            />
+          </div>
           <p className="text-xs text-[var(--text-muted)]">
             提示：会先在当前音源内按音质从高到低自动降级；全部音质都不可播放时，会按「智能换源」的设置尝试替代方案。
           </p>
