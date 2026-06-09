@@ -4,7 +4,7 @@
  */
 
 import type { PaginatedSongsResult, Song } from '@/types'
-import type { NeteaseUserData, QrCheckResult } from '@/stores/authStore'
+import type { NeteasePlaylistSummary, NeteaseUserData, QrCheckResult } from '@/stores/authStore'
 import type { AudioQuality } from '@/types'
 import api from './api'
 import { neteaseRequest, setCookie } from './neteaseCrypto'
@@ -53,6 +53,28 @@ class NeteaseAuthAPI {
             cover,
             platform: 'netease' as const,
         }
+    }
+
+    private mapPlaylist(item: any): NeteasePlaylistSummary {
+        return {
+            id: item.id,
+            name: item.name || '',
+            cover: item.coverImgUrl || item.cover || item.picUrl || '',
+            description: item.description || '',
+            trackCount: item.trackCount || item.trackcount || 0,
+            playCount: item.playCount || item.playcount || 0,
+            creator: item.creator ? {
+                userId: item.creator.userId,
+                nickname: item.creator.nickname || '',
+                avatarUrl: item.creator.avatarUrl || '',
+            } : undefined,
+            subscribed: Boolean(item.subscribed),
+        }
+    }
+
+    private extractPlaylistList(body: any): any[] {
+        const playlist = body?.playlist || body?.data?.playlist || body?.list || body?.data?.list || body?.data
+        return Array.isArray(playlist) ? playlist : []
     }
 
     /**
@@ -173,7 +195,7 @@ class NeteaseAuthAPI {
     /**
      * Get user's playlists
      */
-    async getUserPlaylist(uid: number, cookie?: string): Promise<any[]> {
+    async getUserPlaylist(uid: number, cookie?: string): Promise<NeteasePlaylistSummary[]> {
         try {
             const res = await this.weapi('/api/user/playlist', {
                 uid,
@@ -183,25 +205,104 @@ class NeteaseAuthAPI {
             }, cookie)
 
             if (res?.body?.code === 200 && res.body.playlist) {
-                return res.body.playlist.map((item: any) => ({
-                    id: item.id,
-                    name: item.name,
-                    cover: item.coverImgUrl,
-                    description: item.description,
-                    trackCount: item.trackCount,
-                    playCount: item.playCount,
-                    creator: {
-                        userId: item.creator?.userId,
-                        nickname: item.creator?.nickname,
-                        avatarUrl: item.creator?.avatarUrl,
-                    },
-                    subscribed: item.subscribed,
-                }))
+                return res.body.playlist.map((item: any) => this.mapPlaylist(item))
             }
             return []
         } catch (error) {
             console.error('Get user playlist error:', error)
             return []
+        }
+    }
+
+    /**
+     * Get user's created playlists.
+     * Mirrors api-enhanced `/user/playlist/create`.
+     */
+    async getUserCreatedPlaylists(
+        uid: number,
+        cookie?: string,
+        limit: number = 100,
+        offset: number = 0,
+    ): Promise<NeteasePlaylistSummary[]> {
+        try {
+            const res = await this.eapi('/api/user/playlist/create', {
+                userId: uid,
+                limit,
+                offset,
+                isWebview: 'true',
+                includeRedHeart: 'true',
+                includeTop: 'true',
+            }, cookie)
+
+            if (res?.body?.code === 200) {
+                return this.extractPlaylistList(res.body).map((item: any) => ({
+                    ...this.mapPlaylist(item),
+                    subscribed: Boolean(item.subscribed),
+                }))
+            }
+            return []
+        } catch (error) {
+            console.error('Get user created playlists error:', error)
+            return []
+        }
+    }
+
+    /**
+     * Get user's collected playlists.
+     * Mirrors api-enhanced `/user/playlist/collect`.
+     */
+    async getUserCollectedPlaylists(
+        uid: number,
+        cookie?: string,
+        limit: number = 100,
+        offset: number = 0,
+    ): Promise<NeteasePlaylistSummary[]> {
+        try {
+            const res = await this.eapi('/api/user/playlist/collect', {
+                userId: uid,
+                limit,
+                offset,
+                isWebview: 'true',
+                includeRedHeart: 'true',
+                includeTop: 'true',
+            }, cookie)
+
+            if (res?.body?.code === 200) {
+                return this.extractPlaylistList(res.body).map((item: any) => ({
+                    ...this.mapPlaylist(item),
+                    subscribed: true,
+                }))
+            }
+            return []
+        } catch (error) {
+            console.error('Get user collected playlists error:', error)
+            return []
+        }
+    }
+
+    async getUserPlaylistGroups(uid: number, cookie?: string): Promise<{
+        playlists: NeteasePlaylistSummary[]
+        createdPlaylists: NeteasePlaylistSummary[]
+        collectedPlaylists: NeteasePlaylistSummary[]
+    }> {
+        const [createdPlaylists, collectedPlaylists] = await Promise.all([
+            this.getUserCreatedPlaylists(uid, cookie),
+            this.getUserCollectedPlaylists(uid, cookie),
+        ])
+
+        if (createdPlaylists.length > 0 || collectedPlaylists.length > 0) {
+            return {
+                createdPlaylists,
+                collectedPlaylists,
+                playlists: [...createdPlaylists, ...collectedPlaylists],
+            }
+        }
+
+        const playlists = await this.getUserPlaylist(uid, cookie)
+        return {
+            playlists,
+            createdPlaylists: playlists.filter((playlist) => playlist.creator?.userId === uid || !playlist.subscribed),
+            collectedPlaylists: playlists.filter((playlist) => playlist.creator?.userId !== uid && playlist.subscribed),
         }
     }
 

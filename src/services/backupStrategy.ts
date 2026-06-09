@@ -624,7 +624,13 @@ const buildAuthStatePatch = (
   loginExpireTime: null,
   lastLoginTime: Date.now(),
   dailyRecommend: { timestamp: null, songs: [] },
-  userPlaylists: { userId: userData?.userId || 0, playlists: [], lastUpdated: null },
+  userPlaylists: {
+    userId: userData?.userId || 0,
+    playlists: [],
+    createdPlaylists: [],
+    collectedPlaylists: [],
+    lastUpdated: null,
+  },
   likeSongIds,
 })
 

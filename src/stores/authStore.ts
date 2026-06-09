@@ -27,9 +27,26 @@ export interface DailyRecommendData {
     songs: any[]
 }
 
+export interface NeteasePlaylistSummary {
+    id: number | string
+    name: string
+    cover?: string
+    description?: string
+    trackCount?: number
+    playCount?: number
+    creator?: {
+        userId?: number
+        nickname?: string
+        avatarUrl?: string
+    }
+    subscribed?: boolean
+}
+
 export interface UserPlaylistData {
     userId: number
-    playlists: any[]
+    playlists: NeteasePlaylistSummary[]
+    createdPlaylists?: NeteasePlaylistSummary[]
+    collectedPlaylists?: NeteasePlaylistSummary[]
     lastUpdated: number | null
 }
 
@@ -72,7 +89,7 @@ const getDefaultState = () => ({
     loginExpireTime: null as number | null,
     lastLoginTime: null as number | null,
     dailyRecommend: { timestamp: null, songs: [] } as DailyRecommendData,
-    userPlaylists: { userId: 0, playlists: [], lastUpdated: null } as UserPlaylistData,
+    userPlaylists: { userId: 0, playlists: [], createdPlaylists: [], collectedPlaylists: [], lastUpdated: null } as UserPlaylistData,
     likeSongIds: [] as number[],
 })
 
@@ -120,11 +137,13 @@ export const useAuthStore = create<AuthStore>()(
                 if (!userData?.userId || !cookie) return
 
                 try {
-                    const playlists = await neteaseAuthApi.getUserPlaylist(userData.userId, cookie)
+                    const playlistGroups = await neteaseAuthApi.getUserPlaylistGroups(userData.userId, cookie)
                     set({
                         userPlaylists: {
                             userId: userData.userId,
-                            playlists,
+                            playlists: playlistGroups.playlists,
+                            createdPlaylists: playlistGroups.createdPlaylists,
+                            collectedPlaylists: playlistGroups.collectedPlaylists,
                             lastUpdated: Date.now(),
                         },
                     })

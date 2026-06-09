@@ -7,6 +7,8 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  Cloud,
   Globe,
   Download,
   Heart,
@@ -16,12 +18,44 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useAuthStore, type NeteasePlaylistSummary } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useUserStore } from '@/stores/userStore'
 import { cn } from '@/utils/cn'
 import { getOnlinePlaylistBrowsePath } from '@/utils/onlinePlaylistRoute'
 
 type PlaylistSection = 'custom' | 'local' | 'online'
+
+const NETEASE_SIDEBAR_FOLD_STORAGE_KEY = 'netease-sidebar-fold-state'
+
+type NeteaseFoldState = {
+  root: boolean
+  created: boolean
+  collected: boolean
+}
+
+const DEFAULT_NETEASE_FOLD_STATE: NeteaseFoldState = {
+  root: true,
+  created: true,
+  collected: true,
+}
+
+const readNeteaseFoldState = (): NeteaseFoldState => {
+  if (typeof window === 'undefined') return DEFAULT_NETEASE_FOLD_STATE
+
+  try {
+    const raw = window.localStorage.getItem(NETEASE_SIDEBAR_FOLD_STORAGE_KEY)
+    if (!raw) return DEFAULT_NETEASE_FOLD_STATE
+    const parsed = JSON.parse(raw) as Partial<NeteaseFoldState>
+    return {
+      root: typeof parsed.root === 'boolean' ? parsed.root : DEFAULT_NETEASE_FOLD_STATE.root,
+      created: typeof parsed.created === 'boolean' ? parsed.created : DEFAULT_NETEASE_FOLD_STATE.created,
+      collected: typeof parsed.collected === 'boolean' ? parsed.collected : DEFAULT_NETEASE_FOLD_STATE.collected,
+    }
+  } catch {
+    return DEFAULT_NETEASE_FOLD_STATE
+  }
+}
 
 const encodeSortableId = (section: PlaylistSection, id: string) => `${section}:${id}`
 const decodeSortableId = (encoded: string): { section: PlaylistSection; id: string } => {
@@ -109,12 +143,44 @@ function SortableOnlinePlaylistItem({
   )
 }
 
+function NeteasePlaylistItem({
+  playlist,
+  collapsed,
+}: {
+  playlist: NeteasePlaylistSummary
+  collapsed: boolean
+}) {
+  return (
+    <NavLink
+      to={`/netease-playlist/${playlist.id}`}
+      className={({ isActive }) =>
+        cn(
+          'sidebar-item w-full min-w-0',
+          isActive && 'active',
+          collapsed && 'justify-center px-2',
+        )
+      }
+      title={playlist.name}
+    >
+      {playlist.cover ? (
+        <img src={playlist.cover} alt="" className="w-5 h-5 rounded flex-shrink-0 object-cover" />
+      ) : (
+        <Cloud className="w-5 h-5 flex-shrink-0 text-red-400" />
+      )}
+      {!collapsed && (
+        <span className="min-w-0 flex-1 truncate">{playlist.name}</span>
+      )}
+    </NavLink>
+  )
+}
+
 export default function Sidebar() {
   const navigate = useNavigate()
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const setShowCreatePlaylistModal = useUIStore((s) => s.setShowCreatePlaylistModal)
   const setShowImportPlaylistModal = useUIStore((s) => s.setShowImportPlaylistModal)
   const [isMac, setIsMac] = useState(false)
+  const [neteaseFoldState, setNeteaseFoldState] = useState<NeteaseFoldState>(readNeteaseFoldState)
 
   useEffect(() => {
     if (window.electronAPI?.getPlatform) {
@@ -128,6 +194,32 @@ export default function Sidebar() {
   const reorderPlaylists = useUserStore((s) => s.reorderPlaylists)
   const reorderLocalPlaylists = useUserStore((s) => s.reorderLocalPlaylists)
   const reorderOnlinePlaylists = useUserStore((s) => s.reorderOnlinePlaylists)
+  const isNeteaseLoggedIn = useAuthStore((s) => s.isLoggedIn)
+  const neteaseUserData = useAuthStore((s) => s.userData)
+  const neteaseCookie = useAuthStore((s) => s.cookie)
+  const userPlaylists = useAuthStore((s) => s.userPlaylists)
+  const refreshUserPlaylists = useAuthStore((s) => s.refreshUserPlaylists)
+
+  useEffect(() => {
+    if (!isNeteaseLoggedIn || !neteaseUserData?.userId || !neteaseCookie) return
+
+    const hasCurrentUserCache = userPlaylists.userId === neteaseUserData.userId
+    const hasGroupedCache = Array.isArray(userPlaylists.createdPlaylists) && Array.isArray(userPlaylists.collectedPlaylists)
+    const isStale = !userPlaylists.lastUpdated || Date.now() - userPlaylists.lastUpdated > 5 * 60 * 1000
+
+    if (!hasCurrentUserCache || !hasGroupedCache || isStale) {
+      void refreshUserPlaylists()
+    }
+  }, [
+    isNeteaseLoggedIn,
+    neteaseUserData?.userId,
+    neteaseCookie,
+    userPlaylists.userId,
+    userPlaylists.createdPlaylists,
+    userPlaylists.collectedPlaylists,
+    userPlaylists.lastUpdated,
+    refreshUserPlaylists,
+  ])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -144,8 +236,34 @@ export default function Sidebar() {
     { icon: HardDrive, label: '本地音乐', path: '/library' },
   ]
 
+  const createdNeteasePlaylists = userPlaylists.userId === neteaseUserData?.userId
+    ? userPlaylists.createdPlaylists ?? userPlaylists.playlists.filter((playlist) => (
+      playlist.creator?.userId === neteaseUserData?.userId || !playlist.subscribed
+    ))
+    : []
+  const collectedNeteasePlaylists = userPlaylists.userId === neteaseUserData?.userId
+    ? userPlaylists.collectedPlaylists ?? userPlaylists.playlists.filter((playlist) => (
+      playlist.creator?.userId !== neteaseUserData?.userId && playlist.subscribed
+    ))
+    : []
+  const hasNeteasePlaylistSection = isNeteaseLoggedIn
+  const hasNeteasePlaylists = createdNeteasePlaylists.length > 0 || collectedNeteasePlaylists.length > 0
+  const neteasePlaylistStatusText = userPlaylists.lastUpdated ? '暂无歌单' : '加载中...'
+
   const handleCreatePlaylist = () => {
     setShowCreatePlaylistModal(true)
+  }
+
+  const toggleNeteaseFold = (key: keyof NeteaseFoldState) => {
+    setNeteaseFoldState((current) => {
+      const next = { ...current, [key]: !current[key] }
+      try {
+        window.localStorage.setItem(NETEASE_SIDEBAR_FOLD_STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -255,6 +373,40 @@ export default function Sidebar() {
             </button>
           )
         )}
+      </div>
+    )
+  }
+
+  const renderNeteaseSubsection = (
+    key: 'created' | 'collected',
+    title: string,
+    playlists: NeteasePlaylistSummary[],
+  ) => {
+    if (playlists.length === 0) return null
+
+    if (sidebarCollapsed) {
+      return playlists.map((playlist) => (
+        <NeteasePlaylistItem key={`${key}-${playlist.id}`} playlist={playlist} collapsed={sidebarCollapsed} />
+      ))
+    }
+
+    const isExpanded = neteaseFoldState[key]
+    const SubsectionIcon = isExpanded ? ChevronDown : ChevronRight
+
+    return (
+      <div className="space-y-0.5">
+        <button
+          onClick={() => toggleNeteaseFold(key)}
+          className="flex w-full items-center gap-1 px-1 pt-1.5 pb-0.5 text-left text-xs font-medium uppercase tracking-wider text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+          aria-expanded={isExpanded}
+        >
+          <SubsectionIcon className="w-3.5 h-3.5 flex-shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{title}</span>
+          <span className="text-[10px]">{playlists.length}</span>
+        </button>
+        {isExpanded && playlists.map((playlist) => (
+          <NeteasePlaylistItem key={`${key}-${playlist.id}`} playlist={playlist} collapsed={sidebarCollapsed} />
+        ))}
       </div>
     )
   }
@@ -411,6 +563,47 @@ export default function Sidebar() {
             })}
           </SortableContext>
         </DndContext>
+
+        {hasNeteasePlaylistSection && (
+          <div className={cn(!sidebarCollapsed && 'mt-4')}>
+            {sidebarCollapsed ? (
+              <button
+                onClick={() => navigate('/netease-home')}
+                className="sidebar-item w-full justify-center px-2"
+                title="小芸歌单"
+                aria-label="小芸歌单"
+              >
+                <Cloud className="w-5 h-5 flex-shrink-0 text-red-400" />
+              </button>
+            ) : (
+              <button
+                onClick={() => toggleNeteaseFold('root')}
+                className="flex w-full items-center justify-between px-1 py-1 text-left text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                aria-expanded={neteaseFoldState.root}
+              >
+                <span className="font-medium uppercase tracking-wider truncate">小芸歌单</span>
+                {neteaseFoldState.root ? (
+                  <ChevronDown className="w-4 h-4 flex-shrink-0" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 flex-shrink-0" />
+                )}
+              </button>
+            )}
+
+            {(sidebarCollapsed || neteaseFoldState.root) && (
+              <div className="space-y-0.5">
+                {hasNeteasePlaylists ? (
+                  <>
+                    {renderNeteaseSubsection('created', '创建的歌单', createdNeteasePlaylists)}
+                    {renderNeteaseSubsection('collected', '收藏的歌单', collectedNeteasePlaylists)}
+                  </>
+                ) : !sidebarCollapsed ? (
+                  <div className="px-1 py-2 text-xs text-[var(--text-muted)]">{neteasePlaylistStatusText}</div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
     </aside>

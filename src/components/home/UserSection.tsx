@@ -40,9 +40,9 @@ export default function UserSection() {
     const previewSongs = (dailyRecommend.songs as Song[]).slice(0, 4)
 
     // Get user's own playlists (created by them, not subscribed)
-    const ownPlaylists = userPlaylists.playlists.filter(
-        (p: any) => p.creator?.userId === userData.userId
-    ).slice(0, 6)
+    const ownPlaylists = (userPlaylists.createdPlaylists ?? userPlaylists.playlists.filter(
+        (p: any) => p.creator?.userId === userData.userId || !p.subscribed
+    )).slice(0, 6)
 
     const handlePlayDaily = () => {
         const songs = dailyRecommend.songs as Song[]
@@ -66,10 +66,12 @@ export default function UserSection() {
             })
 
             // Refresh playlists
-            const playlists = await neteaseAuthApi.getUserPlaylist(userData.userId, cookie)
+            const playlistGroups = await neteaseAuthApi.getUserPlaylistGroups(userData.userId, cookie)
             setUserPlaylists({
                 userId: userData.userId,
-                playlists,
+                playlists: playlistGroups.playlists,
+                createdPlaylists: playlistGroups.createdPlaylists,
+                collectedPlaylists: playlistGroups.collectedPlaylists,
                 lastUpdated: Date.now(),
             })
 
@@ -98,10 +100,12 @@ export default function UserSection() {
                 setNewPlaylistName('')
                 setIsPrivate(false)
                 // 刷新歌单列表
-                const playlists = await neteaseAuthApi.getUserPlaylist(userData.userId, cookie)
+                const playlistGroups = await neteaseAuthApi.getUserPlaylistGroups(userData.userId, cookie)
                 setUserPlaylists({
                     userId: userData.userId,
-                    playlists,
+                    playlists: playlistGroups.playlists,
+                    createdPlaylists: playlistGroups.createdPlaylists,
+                    collectedPlaylists: playlistGroups.collectedPlaylists,
                     lastUpdated: Date.now(),
                 })
             } else {

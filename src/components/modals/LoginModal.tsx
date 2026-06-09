@@ -151,10 +151,12 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
     const loadUserData = async (userId: number, cookie: string) => {
         try {
             // Load playlists
-            const playlists = await neteaseAuthApi.getUserPlaylist(userId, cookie)
+            const playlistGroups = await neteaseAuthApi.getUserPlaylistGroups(userId, cookie)
             setUserPlaylists({
                 userId,
-                playlists,
+                playlists: playlistGroups.playlists,
+                createdPlaylists: playlistGroups.createdPlaylists,
+                collectedPlaylists: playlistGroups.collectedPlaylists,
                 lastUpdated: Date.now(),
             })
 
