@@ -39,6 +39,7 @@ import CoverImage from '@/components/ui/CoverImage'
 import Tooltip from '@/components/ui/Tooltip'
 import AudioVisualizer from '@/components/AudioVisualizer'
 import PlaybackQualityMenu from '@/components/player/PlaybackQualityMenu'
+import PlaybackRateMenu from '@/components/player/PlaybackRateMenu'
 import SourceSwitchPopover from '@/components/player/SourceSwitchPopover'
 import ProgressBarTop from '@/components/player/ProgressBarTop'
 import { downloadManager } from '@/services/downloadManager'
@@ -683,7 +684,7 @@ export default function Player() {
         </div>
 
         {/* Right controls */}
-        <div className="flex items-center gap-2 w-48 justify-end">
+        <div className="flex items-center gap-2 w-64 justify-end">
           {/* Volume */}
           <div
             className="relative flex items-center"
@@ -799,6 +800,13 @@ export default function Player() {
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
+
+          <PlaybackRateMenu
+            triggerClassName="h-9 min-w-[3.75rem] bg-transparent px-2 text-[12px] hover:bg-[var(--hover-bg)] dark:bg-transparent dark:hover:bg-white/10"
+            contentClassName="z-50"
+            side="top"
+            align="end"
+          />
 
           <button onClick={toggleQueuePanel} className="btn-icon">
             <ListMusic className="w-5 h-5" />

@@ -43,6 +43,7 @@ import AudioVisualizer from '@/components/AudioVisualizer'
 import LxLyricPlayer, { DEFAULT_LYRIC_COLORS, type LyricColorSettings } from '@/components/player/LxLyricPlayer'
 import AmllFullPlayer from '@/components/player/AmllFullPlayer'
 import PlaybackQualityMenu from '@/components/player/PlaybackQualityMenu'
+import PlaybackRateMenu from '@/components/player/PlaybackRateMenu'
 import { useCoverBackdrop, resolveBackgroundTheme, type ResolvedBackground } from '@/hooks/useCoverBackdrop'
 import { EQ_FREQUENCIES, EQ_PRESETS, REVERB_PRESETS } from '@/utils/audioEffects'
 import { isSamePlayableSong } from '@/utils/songIdentity'
@@ -1524,6 +1525,19 @@ function LyricsPanel({
                   </DropdownMenu.Content>
                 </DropdownMenu.Portal>
               </DropdownMenu.Root>
+
+              <PlaybackRateMenu
+                triggerClassName={cn(
+                  pillButtonClass,
+                  'h-10 min-w-[4.35rem] px-3',
+                  audioEffects.playbackRate !== 1 && (isDarkAppearance ? 'bg-white/18 text-white' : 'bg-slate-900/14 text-slate-900')
+                )}
+                contentClassName={menuClass}
+                itemClassName={menuItemClass}
+                mutedClassName={textMutedClass}
+                side="top"
+                align="center"
+              />
 
               <div className="relative">
                 <button

@@ -16,6 +16,7 @@ import { convertSollinLyricsToAmll } from '@/utils/amllLyricConverter'
 import { cn } from '@/utils/cn'
 import CoverImage from '@/components/ui/CoverImage'
 import PlayerBackdrop from '@/components/player/PlayerBackdrop'
+import PlaybackRateMenu from '@/components/player/PlaybackRateMenu'
 import { PLAYER_MODE_OPTIONS } from '@/constants/playerModes'
 import '@applemusic-like-lyrics/core/style.css'
 
@@ -27,7 +28,7 @@ const formatMs = (ms: number) => {
 }
 
 const SETTINGS_POPOVER_WIDTH = 224
-const SETTINGS_POPOVER_ESTIMATED_HEIGHT = 292
+const SETTINGS_POPOVER_ESTIMATED_HEIGHT = 360
 const SETTINGS_POPOVER_MARGIN = 16
 
 export default function AmllFullPlayer() {
@@ -320,6 +321,17 @@ export default function AmllFullPlayer() {
                           <span>{label}</span>
                         </button>
                       ))}
+                      <div className="my-3 h-px bg-white/10" />
+                      <p className="mb-2 px-1 text-xs font-medium text-white/40">播放倍速</p>
+                      <PlaybackRateMenu
+                        triggerClassName="h-9 w-full justify-between rounded-lg bg-white/5 px-3 text-sm text-white/70 hover:bg-white/10 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/10"
+                        contentClassName="z-[90] border-white/10 bg-black/85 text-white"
+                        itemClassName="text-white hover:bg-white/10 dark:hover:bg-white/10"
+                        mutedClassName="text-white/40"
+                        side="left"
+                        align="start"
+                        showIcon={false}
+                      />
                       <div className="my-3 h-px bg-white/10" />
                       <p className="mb-2 px-1 text-xs font-medium text-white/40">背景效果</p>
                       <div className="grid grid-cols-3 gap-1 rounded-lg bg-white/5 p-1">
