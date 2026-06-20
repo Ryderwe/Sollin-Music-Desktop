@@ -2,12 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Play, Shuffle, ArrowLeft, RefreshCw } from 'lucide-react'
 import ExpandableSearch from '@/components/ui/ExpandableSearch'
-import { motion } from 'framer-motion'
 import api from '@/services/api'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useUIStore } from '@/stores/uiStore'
 import { usePaginatedSongs } from '@/hooks/usePaginatedSongs'
-import SongRow from '@/components/SongRow'
+import VirtualSongList from '@/components/VirtualSongList'
 import CoverImage from '@/components/ui/CoverImage'
 import { cn } from '@/utils/cn'
 import type { Toplist, Platform } from '@/types'
@@ -101,27 +100,19 @@ export default function ToplistDetail() {
   const coverFallback = allApiSongs.find((song) => song.cover && song.cover !== coverSrc)?.cover || undefined
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex-shrink-0 pb-6">
-        <motion.button
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.3 }}
+      <div>
+        <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-secondary)] mb-4 transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
           <span>返回</span>
-        </motion.button>
+        </button>
 
         <div className="flex items-start gap-6">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
-            className="flex-shrink-0"
-          >
+          <div className="flex-shrink-0">
             {coverSrc ? (
               <CoverImage
                 src={coverSrc}
@@ -132,18 +123,13 @@ export default function ToplistDetail() {
             ) : (
               <div className="w-48 h-48 rounded-2xl bg-gradient-to-br from-primary-400 to-pink-400 shadow-xl" />
             )}
-          </motion.div>
+          </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-3 mb-2">
-              <motion.h1
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.1 }}
-                className="text-3xl font-bold min-w-0 truncate"
-              >
+              <h1 className="text-3xl font-bold min-w-0 truncate">
                 {toplist?.name || '排行榜'}
-              </motion.h1>
+              </h1>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <button
                   onClick={handlePlayAll}
@@ -173,39 +159,31 @@ export default function ToplistDetail() {
                 <ExpandableSearch value={searchQuery} onChange={setSearchQuery} />
               </div>
             </div>
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.15 }}
-              className="text-[var(--text-muted)] mb-3"
-            >
+            <p className="text-[var(--text-muted)] mb-3">
               {allApiSongs.length} 首歌曲
-            </motion.p>
+            </p>
           </div>
         </div>
       </div>
 
       {/* Song list */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide space-y-1">
+      <div>
         {filteredSongs.length > 0 ? (
-          filteredSongs.map((song, index) => (
-            <SongRow
-              key={`${song.id}-${song.platform}`}
-              song={song}
-              index={index}
-              playlist={allApiSongs}
-              playlistId={`toplist-${id}`}
-              showPlatform={false}
-            />
-          ))
+          <VirtualSongList
+            songs={filteredSongs}
+            playlist={allApiSongs}
+            playlistId={`toplist-${id}`}
+            showPlatform={false}
+            scrollable={false}
+            footer={hasMore ? (
+              <div ref={sentinelRef} className="min-h-16 flex items-center justify-center">
+                <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : undefined}
+          />
         ) : (
           <div className="text-center py-20 text-[var(--text-muted)]">
             {searchQuery ? '没有找到匹配歌曲' : '暂无歌曲'}
-          </div>
-        )}
-        {hasMore && (
-          <div ref={sentinelRef} className="min-h-16 flex items-center justify-center">
-            <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
       </div>

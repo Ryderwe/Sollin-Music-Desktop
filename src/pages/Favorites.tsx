@@ -30,10 +30,11 @@ export default function Favorites() {
               播放全部
             </button>
           </div>
-          <div className="h-[calc(100vh-220px)] min-h-[300px]">
+          <div>
             <VirtualSongList
               songs={favorites}
               playlistId="favorites"
+              scrollable={false}
             />
           </div>
         </div>

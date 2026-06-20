@@ -77,8 +77,8 @@ export default function OnlineAlbumDetail() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex-shrink-0 mb-6">
+    <div className="space-y-6">
+      <div>
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-secondary)] mb-4"
@@ -140,9 +140,8 @@ export default function OnlineAlbumDetail() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col">
-
-        <div className="flex-1 overflow-y-auto space-y-1">
+      <div>
+        <div className="space-y-1">
           {filteredSongs.length > 0 ? (
             filteredSongs.map((song, index) => (
               <SongRow

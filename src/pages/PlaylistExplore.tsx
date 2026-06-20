@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Loader2, Play } from 'lucide-react'
-import { motion } from 'framer-motion'
 import api from '@/services/api'
 import CoverImage from '@/components/ui/CoverImage'
 import { cn } from '@/utils/cn'
@@ -217,7 +216,7 @@ export default function PlaylistExplore() {
   }
 
   return (
-    <div className="h-full overflow-y-auto scrollbar-hide pb-8">
+    <div className="pb-8">
       <button
         onClick={() => navigate(-1)}
         className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-secondary)] mb-6 transition-colors"
@@ -267,7 +266,7 @@ export default function PlaylistExplore() {
           </button>
 
           {isTagMenuOpen && (
-            <div className="absolute left-0 top-full z-30 mt-2 w-[min(760px,calc(100vw-2rem))] max-h-[min(520px,65vh)] overflow-y-auto rounded-xl border border-gray-200/70 dark:border-gray-700/70 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl shadow-xl p-4">
+            <div className="absolute left-0 top-full z-30 mt-2 w-[min(760px,calc(100vw-2rem))] max-h-[min(520px,65vh)] overflow-y-auto rounded-xl border border-gray-200/70 dark:border-gray-700/70 bg-white/95 dark:bg-gray-900/95 shadow-xl p-4">
               <button
                 onClick={() => {
                   updateRoute({ tagId: '', page: 1 })
@@ -348,9 +347,8 @@ export default function PlaylistExplore() {
         <>
           <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {playlists.map((playlist) => (
-              <motion.div
+              <div
                 key={`${playlist.platform}-${playlist.id}`}
-                whileHover={{ scale: 1.03 }}
                 onClick={() => handlePlaylistClick(playlist)}
                 className="cursor-pointer group"
               >
@@ -371,7 +369,7 @@ export default function PlaylistExplore() {
                   )}
                 </div>
                 <p className="font-medium text-sm truncate">{playlist.name}</p>
-              </motion.div>
+              </div>
             ))}
           </div>
 

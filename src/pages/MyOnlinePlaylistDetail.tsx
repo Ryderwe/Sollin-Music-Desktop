@@ -1,8 +1,8 @@
-import { useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Globe, Play, RefreshCw, Repeat, Trash2 } from 'lucide-react'
 import ExpandableSearch from '@/components/ui/ExpandableSearch'
-import SongRow from '@/components/SongRow'
+import VirtualSongList from '@/components/VirtualSongList'
 import CoverImage from '@/components/ui/CoverImage'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useUserStore } from '@/stores/userStore'
@@ -11,8 +11,6 @@ import { importSharedOnlinePlaylist } from '@/services/sharedOnlinePlaylistImpor
 import { getOnlinePlaylistBrowsePath } from '@/utils/onlinePlaylistRoute'
 import { formatDate } from '@/utils/format'
 import type { Platform } from '@/types'
-
-const DISPLAY_PAGE_SIZE = 50
 
 const PLATFORM_NAMES: Record<Platform, string> = {
   netease: '小芸音乐',
@@ -33,8 +31,6 @@ export default function MyOnlinePlaylistDetail() {
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [displayCount, setDisplayCount] = useState(DISPLAY_PAGE_SIZE)
-  const sentinelRef = useRef<HTMLDivElement>(null)
   const onlinePlaylists = useUserStore((state) => state.onlinePlaylists)
   const setOnlinePlaylistAutoUpdate = useUserStore((state) => state.setOnlinePlaylistAutoUpdate)
   const removeOnlinePlaylist = useUserStore((state) => state.removeOnlinePlaylist)
@@ -57,38 +53,6 @@ export default function MyOnlinePlaylistDetail() {
       song.album.toLowerCase().includes(query)
     ))
   }, [playlist, searchQuery])
-
-  // Reset display count when search changes
-  useEffect(() => {
-    setDisplayCount(DISPLAY_PAGE_SIZE)
-  }, [searchQuery])
-
-  const visibleSongs = filteredSongs.slice(0, displayCount)
-  const hasMore = displayCount < filteredSongs.length
-
-  const loadMore = useCallback(() => {
-    setDisplayCount((prev) => Math.min(prev + DISPLAY_PAGE_SIZE, filteredSongs.length))
-  }, [filteredSongs.length])
-
-  // IntersectionObserver for infinite scroll
-  useEffect(() => {
-    if (!hasMore) return
-
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          loadMore()
-        }
-      },
-      { rootMargin: '200px' }
-    )
-
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [hasMore, loadMore])
 
   const handlePlayAll = () => {
     if (!playlist || filteredSongs.length === 0) return
@@ -155,8 +119,8 @@ export default function MyOnlinePlaylistDetail() {
   const sourceLabel = getOnlinePlaylistLabel(playlist)
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex-shrink-0 mb-6">
+    <div className="space-y-6">
+      <div>
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-secondary)] mb-4"
@@ -249,27 +213,15 @@ export default function MyOnlinePlaylistDetail() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col">
-
-        <div className="flex-1 overflow-y-auto space-y-1">
-          {visibleSongs.length > 0 ? (
-            <>
-              {visibleSongs.map((song, index) => (
-                <SongRow
-                  key={`${song.id}-${song.platform}-${index}`}
-                  song={song}
-                  index={index}
-                  playlist={filteredSongs}
-                  playlistId={`my-online-playlist-${playlist.id}`}
-                  showPlatform={false}
-                />
-              ))}
-              {hasMore && (
-                <div ref={sentinelRef} className="min-h-16 flex items-center justify-center">
-                  <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-                </div>
-              )}
-            </>
+      <div>
+        <div>
+          {filteredSongs.length > 0 ? (
+            <VirtualSongList
+              songs={filteredSongs}
+              playlistId={`my-online-playlist-${playlist.id}`}
+              showPlatform={false}
+              scrollable={false}
+            />
           ) : (
             <div className="text-center py-16 text-[var(--text-muted)]">
               <p>{searchQuery ? '没有找到匹配歌曲' : '暂无歌曲'}</p>

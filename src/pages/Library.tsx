@@ -253,11 +253,12 @@ export default function Library() {
             </div>
           </div>
 
-          <div className="h-[calc(100vh-300px)] min-h-[300px]">
+          <div>
             <VirtualSongList
               songs={sortedLocalSongs}
               playlistId="local-library"
               showPlatform={false}
+              scrollable={false}
             />
           </div>
         </div>

@@ -154,7 +154,7 @@
   }
 
   .btn-icon {
-    @apply btn rounded-full p-1.5 backdrop-blur-xl border;
+    @apply btn rounded-full p-1.5 border;
     background: rgba(255, 255, 255, 0.4);
     border-color: rgba(255, 255, 255, 0.15);
     color: var(--text-secondary);
@@ -195,10 +195,19 @@
   .song-row {
     @apply flex items-center gap-4 px-4 py-3 rounded-lg;
     @apply hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors cursor-pointer;
+    min-height: 64px;
+    transform: translateZ(0);
+    backface-visibility: hidden;
   }
 
   .song-row.playing {
     @apply bg-primary-500/10;
+  }
+
+  .app-content-scroll,
+  .app-content-scroll * {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
 
   /* Animation */

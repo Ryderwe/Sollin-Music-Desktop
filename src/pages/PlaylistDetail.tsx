@@ -1,18 +1,15 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Play, Shuffle, MoreHorizontal, Trash2, Edit, ArrowLeft, Search } from 'lucide-react'
 import ExpandableSearch from '@/components/ui/ExpandableSearch'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { motion } from 'framer-motion'
 import { useUserStore } from '@/stores/userStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useUIStore } from '@/stores/uiStore'
-import SongRow from '@/components/SongRow'
+import VirtualSongList from '@/components/VirtualSongList'
 import { formatDuration, formatDate } from '@/utils/format'
 import type { Playlist } from '@/types'
 import CoverImage from '@/components/ui/CoverImage'
-
-const DISPLAY_PAGE_SIZE = 50
 
 export default function PlaylistDetail() {
   const { id } = useParams<{ id: string }>()
@@ -25,8 +22,6 @@ export default function PlaylistDetail() {
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [displayCount, setDisplayCount] = useState(DISPLAY_PAGE_SIZE)
-  const sentinelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const found = playlists.find((p) => p.id === id) || localPlaylists.find((p) => p.id === id)
@@ -45,38 +40,6 @@ export default function PlaylistDetail() {
       song.artist.toLowerCase().includes(query)
     )
   }, [playlist, searchQuery])
-
-  // Reset display count when search changes
-  useEffect(() => {
-    setDisplayCount(DISPLAY_PAGE_SIZE)
-  }, [searchQuery])
-
-  const visibleSongs = filteredSongs.slice(0, displayCount)
-  const hasMore = displayCount < filteredSongs.length
-
-  const loadMore = useCallback(() => {
-    setDisplayCount((prev) => Math.min(prev + DISPLAY_PAGE_SIZE, filteredSongs.length))
-  }, [filteredSongs.length])
-
-  // IntersectionObserver for infinite scroll
-  useEffect(() => {
-    if (!hasMore) return
-
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) {
-          loadMore()
-        }
-      },
-      { rootMargin: '200px' }
-    )
-
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [hasMore, loadMore])
 
   if (!playlist) {
     return (
@@ -227,31 +190,19 @@ export default function PlaylistDetail() {
       {/* Songs */}
       {playlist.songs.length > 0 ? (
         filteredSongs.length > 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="space-y-1"
-          >
+          <div>
             {searchQuery && (
               <div className="text-sm text-[var(--text-muted)] mb-2">
                 找到 {filteredSongs.length} 首歌曲
               </div>
             )}
-            {visibleSongs.map((song, index) => (
-              <SongRow
-                key={`${song.id || index}-${song.platform}-${index}`}
-                song={song}
-                index={index}
-                playlist={playlist.songs}
-                playlistId={playlist.id}
-              />
-            ))}
-            {hasMore && (
-              <div ref={sentinelRef} className="min-h-16 flex items-center justify-center">
-                <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
-          </motion.div>
+            <VirtualSongList
+              songs={filteredSongs}
+              playlist={playlist.songs}
+              playlistId={playlist.id}
+              scrollable={false}
+            />
+          </div>
         ) : (
           <div className="text-center py-20 text-[var(--text-muted)]">
             <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />

@@ -25,6 +25,7 @@ import {
 import * as Slider from '@radix-ui/react-slider'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useLocation } from 'react-router-dom'
 import { useUserStore } from '@/stores/userStore'
 import { formatTime } from '@/utils/format'
 import type { PlayMode } from '@/types'
@@ -182,6 +183,7 @@ const BackgroundLayer = memo(function BackgroundLayer({
 })
 
 export default function Layout() {
+  const location = useLocation()
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const showLyricsPanel = useUIStore((s) => s.showLyricsPanel)
   const lyricsPlayerMode = useUIStore((s) => s.lyricsPlayerMode)
@@ -208,6 +210,8 @@ export default function Layout() {
   )
   const backgroundTextureSrc = appResolvedBg.textureSrc || coverBackdrop.textureSrc || currentSong?.cover || null
   const lyricsTextureSrc = lyricsResolvedBg.textureSrc || coverBackdrop.textureSrc || currentSong?.cover || null
+  const mainScrollRef = useRef<HTMLElement | null>(null)
+  const setHomeScrollTop = useUIStore((s) => s.setHomeScrollTop)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -250,6 +254,49 @@ export default function Layout() {
     root.style.setProperty('--text-secondary', appResolvedBg.fgSecondary)
     root.style.setProperty('--text-muted', appResolvedBg.fgMuted)
   }, [appResolvedBg.fgPrimary, appResolvedBg.fgSecondary, appResolvedBg.fgMuted])
+
+  useEffect(() => {
+    const scrollElement = mainScrollRef.current
+    if (!scrollElement || location.pathname !== '/') return
+
+    const savedTop = useUIStore.getState().homeScrollTop
+    if (savedTop <= 0) return
+
+    const rafId = window.requestAnimationFrame(() => {
+      scrollElement.scrollTop = savedTop
+    })
+
+    return () => window.cancelAnimationFrame(rafId)
+  }, [location.pathname])
+
+  useEffect(() => {
+    const scrollElement = mainScrollRef.current
+    if (!scrollElement) return
+
+    let frameId: number | null = null
+
+    const handleScroll = () => {
+      if (location.pathname !== '/') return
+      if (frameId != null) return
+
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null
+        setHomeScrollTop(scrollElement.scrollTop)
+      })
+    }
+
+    scrollElement.addEventListener('scroll', handleScroll, { passive: true })
+
+    return () => {
+      scrollElement.removeEventListener('scroll', handleScroll)
+      if (frameId != null) {
+        window.cancelAnimationFrame(frameId)
+      }
+      if (location.pathname === '/') {
+        setHomeScrollTop(scrollElement.scrollTop)
+      }
+    }
+  }, [location.pathname, setHomeScrollTop])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -411,10 +458,10 @@ export default function Layout() {
           )}>
             <div
               className="absolute inset-0 bg-[var(--panel-bg)]"
-              style={{ backdropFilter: 'blur(var(--panel-backdrop-blur))' }}
             />
             <main
-              className="relative overflow-y-auto h-full"
+              ref={mainScrollRef}
+              className="app-content-scroll relative overflow-y-auto h-full"
             >
             <div className="p-6 pt-2 pb-20">
               <AnimatedOutlet />

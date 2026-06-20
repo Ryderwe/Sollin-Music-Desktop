@@ -1,7 +1,6 @@
-import { useState, useEffect, useRef, useCallback, type UIEvent } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Play, RefreshCw, ChevronRight } from 'lucide-react'
-import { motion } from 'framer-motion'
 import api from '@/services/api'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useUIStore } from '@/stores/uiStore'
@@ -55,10 +54,9 @@ function ToplistCard({
   const coverFallback = songs.find((song) => song.cover && song.cover !== coverImage)?.cover || undefined
 
   return (
-    <motion.div
-      whileHover={{ y: -2 }}
+    <div
       onClick={onClick}
-      className="cursor-pointer group bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-xl overflow-hidden border border-white/20 dark:border-gray-700/30 shadow-sm hover:shadow-md transition-all"
+      className="cursor-pointer group bg-white dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-200/70 dark:border-gray-700/70 shadow-sm hover:shadow-md transition-all"
     >
       <div className="flex">
         {/* 左侧封面 */}
@@ -69,6 +67,7 @@ function ToplistCard({
               fallback={coverFallback}
               alt={toplist.name}
               className="w-full h-full group-hover:scale-105 transition-transform duration-300"
+              loading="eager"
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-primary-400 to-pink-400" />
@@ -128,7 +127,7 @@ function ToplistCard({
           )}
         </div>
       </div>
-    </motion.div>
+    </div>
   )
 }
 
@@ -148,25 +147,6 @@ export default function Home() {
   const { playSong, setPlaylist } = usePlayerStore()
   const addToast = useUIStore((state) => state.addToast)
   const setHomePlatform = useUIStore((state) => state.setHomePlatform)
-  const setHomeScrollTop = useUIStore((state) => state.setHomeScrollTop)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const savedScrollTopRef = useRef(initialHomeState.homeScrollTop || 0)
-  const hasRestoredScrollRef = useRef(false)
-  const scrollSaveFrameRef = useRef<number | null>(null)
-
-  const handleContainerScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
-    const nextTop = event.currentTarget.scrollTop
-    savedScrollTopRef.current = nextTop
-
-    if (scrollSaveFrameRef.current != null) {
-      window.cancelAnimationFrame(scrollSaveFrameRef.current)
-    }
-
-    scrollSaveFrameRef.current = window.requestAnimationFrame(() => {
-      setHomeScrollTop(nextTop)
-      scrollSaveFrameRef.current = null
-    })
-  }, [setHomeScrollTop])
 
   // Load recommended playlists when platform changes
   useEffect(() => {
@@ -197,30 +177,6 @@ export default function Home() {
   useEffect(() => {
     setHomePlatform(activePlatform)
   }, [activePlatform, setHomePlatform])
-
-  useEffect(() => {
-    if (hasRestoredScrollRef.current) return
-    if (!toplists.length && !recommendPlaylists.length) return
-
-    const container = scrollContainerRef.current
-    if (!container) return
-
-    const rafId = window.requestAnimationFrame(() => {
-      container.scrollTop = savedScrollTopRef.current
-      hasRestoredScrollRef.current = true
-    })
-
-    return () => window.cancelAnimationFrame(rafId)
-  }, [toplists.length, recommendPlaylists.length])
-
-  useEffect(() => {
-    return () => {
-      if (scrollSaveFrameRef.current != null) {
-        window.cancelAnimationFrame(scrollSaveFrameRef.current)
-      }
-      setHomeScrollTop(savedScrollTopRef.current)
-    }
-  }, [setHomeScrollTop])
 
   // Load toplists when platform changes
   useEffect(() => {
@@ -305,7 +261,7 @@ export default function Home() {
   }
 
   return (
-    <div ref={scrollContainerRef} onScroll={handleContainerScroll} className="h-full overflow-y-auto scrollbar-hide pb-6">
+    <div className="pb-6">
       {/* Platform tabs */}
       <div className="flex items-center gap-2 mb-6">
         {ONLINE_MUSIC_PLATFORMS.map((platform) => (
@@ -368,9 +324,8 @@ export default function Home() {
         ) : recommendPlaylists.length > 0 ? (
           <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {recommendPlaylists.slice(0, 6).map((playlist) => (
-              <motion.div
+              <div
                 key={playlist.id}
-                whileHover={{ scale: 1.03 }}
                 onClick={() => navigate(`/online-playlist/${playlist.platform}/${playlist.id}`)}
                 className="cursor-pointer group"
               >
@@ -379,6 +334,7 @@ export default function Home() {
                     src={playlist.cover}
                     alt={playlist.name}
                     className="w-full h-full group-hover:scale-105 transition-transform duration-300"
+                    loading="eager"
                   />
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                     <Play className="w-10 h-10 text-white" fill="white" />
@@ -391,7 +347,7 @@ export default function Home() {
                   )}
                 </div>
                 <p className="font-medium text-sm truncate">{playlist.name}</p>
-              </motion.div>
+              </div>
             ))}
           </div>
         ) : (

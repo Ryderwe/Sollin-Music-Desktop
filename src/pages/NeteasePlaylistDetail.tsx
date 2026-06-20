@@ -24,6 +24,7 @@ import { useUserStore } from '@/stores/userStore'
 import { usePaginatedSongs } from '@/hooks/usePaginatedSongs'
 import neteaseAuthApi from '@/services/neteaseAuth'
 import SongRow from '@/components/SongRow'
+import VirtualSongList from '@/components/VirtualSongList'
 import CoverImage from '@/components/ui/CoverImage'
 import type { Platform } from '@/types'
 
@@ -310,7 +311,7 @@ export default function NeteasePlaylistDetail() {
     }
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="space-y-6">
             {/* Header */}
             <div className="flex-shrink-0 mb-6">
                 <button
@@ -490,15 +491,21 @@ export default function NeteasePlaylistDetail() {
                     <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
                 </div>
             ) : allApiSongs.length > 0 ? (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex-1 overflow-y-auto scrollbar-thin space-y-1"
-                >
+                <div>
                     {filteredSongs.length > 0 ? (
-                        <>
-                            {filteredSongs.map((song, index) => (
-                                <div key={`${song.id}-${song.platform}`} className="flex items-center gap-2">
+                        <VirtualSongList
+                            songs={filteredSongs}
+                            playlist={songs}
+                            playlistId={`netease-playlist-${id}`}
+                            showPlatform={false}
+                            scrollable={false}
+                            footer={hasMore && !searchQuery ? (
+                                <div ref={sentinelRef} className="min-h-16 flex items-center justify-center">
+                                    <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                                </div>
+                            ) : undefined}
+                            renderRow={(song, index) => (
+                                <div className="flex items-center gap-2">
                                     {isSelectMode && (
                                         <button
                                             onClick={() => toggleSongSelection(song.id)}
@@ -531,13 +538,8 @@ export default function NeteasePlaylistDetail() {
                                         />
                                     </div>
                                 </div>
-                            ))}
-                            {hasMore && !searchQuery && (
-                                <div ref={sentinelRef} className="min-h-16 flex items-center justify-center">
-                                    <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-                                </div>
                             )}
-                        </>
+                        />
                     ) : (
                         <div className="flex-1 flex items-center justify-center py-12">
                             <div className="text-center">
@@ -546,7 +548,7 @@ export default function NeteasePlaylistDetail() {
                             </div>
                         </div>
                     )}
-                </motion.div>
+                </div>
             ) : (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-center">

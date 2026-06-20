@@ -30,11 +30,12 @@ export default function LocalFavorites() {
               播放全部
             </button>
           </div>
-          <div className="h-[calc(100vh-220px)] min-h-[300px]">
+          <div>
             <VirtualSongList
               songs={localFavorites}
               playlistId="local-favorites"
               showPlatform={false}
+              scrollable={false}
             />
           </div>
         </div>

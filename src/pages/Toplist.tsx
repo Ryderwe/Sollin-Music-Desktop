@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Trophy, Play, Loader2, ArrowLeft } from 'lucide-react'
-import { motion } from 'framer-motion'
 import api from '@/services/api'
 import CoverImage from '@/components/ui/CoverImage'
 import { cn } from '@/utils/cn'
@@ -99,7 +98,7 @@ export default function Toplist() {
   }
 
   return (
-    <div className="h-full overflow-y-auto scrollbar-hide pb-8">
+    <div className="pb-8">
       <button
         onClick={() => navigate(-1)}
         className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors mb-6"
@@ -139,14 +138,11 @@ export default function Toplist() {
         <section className="mb-8">
           <h2 className="text-lg font-bold mb-4">官方榜</h2>
           <div className="space-y-3">
-            {officialLists.map((list, index) => (
-              <motion.div
+            {officialLists.map((list) => (
+              <div
                 key={list.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
                 onClick={() => handleToplistClick(list)}
-                className="flex gap-4 p-3 rounded-xl bg-white/60 dark:bg-gray-800/50 hover:bg-white dark:hover:bg-gray-800 cursor-pointer transition-colors group border border-white/20 dark:border-gray-700/30"
+                className="flex gap-4 p-3 rounded-xl bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors group border border-gray-200/70 dark:border-gray-700/70"
               >
                 <div className="relative w-24 h-24 rounded-lg overflow-hidden flex-shrink-0">
                   {list.cover ? (
@@ -179,7 +175,7 @@ export default function Toplist() {
                     )}
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </section>
@@ -189,16 +185,13 @@ export default function Toplist() {
         <section>
           <h2 className="text-lg font-bold mb-4">更多榜单</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {moreLists.map((list, index) => (
-              <motion.div
+            {moreLists.map((list) => (
+              <div
                 key={list.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
                 onClick={() => handleToplistClick(list)}
                 className="group cursor-pointer"
               >
-                <div className="relative aspect-square rounded-xl overflow-hidden mb-2 bg-white/60 dark:bg-gray-800/50 border border-white/20 dark:border-gray-700/30">
+                <div className="relative aspect-square rounded-xl overflow-hidden mb-2 bg-white dark:bg-gray-800 border border-gray-200/70 dark:border-gray-700/70">
                   {list.cover ? (
                     <CoverImage src={list.cover} alt={list.name} className="w-full h-full group-hover:scale-105 transition-transform" />
                   ) : (
@@ -206,7 +199,7 @@ export default function Toplist() {
                   )}
                 </div>
                 <p className="text-sm font-medium line-clamp-2">{list.name}</p>
-              </motion.div>
+              </div>
             ))}
           </div>
         </section>

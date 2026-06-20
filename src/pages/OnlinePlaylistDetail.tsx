@@ -2,12 +2,11 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Play, ArrowLeft, Music, RefreshCw, Search, Heart } from 'lucide-react'
 import ExpandableSearch from '@/components/ui/ExpandableSearch'
-import { motion } from 'framer-motion'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useUserStore } from '@/stores/userStore'
 import { usePaginatedSongs } from '@/hooks/usePaginatedSongs'
-import SongRow from '@/components/SongRow'
+import VirtualSongList from '@/components/VirtualSongList'
 import CoverImage from '@/components/ui/CoverImage'
 import api from '@/services/api'
 import {
@@ -187,8 +186,8 @@ export default function OnlinePlaylistDetail() {
   const headerFallback = allApiSongs.find((song) => song.cover && song.cover !== headerCover)?.cover || undefined
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex-shrink-0 mb-6">
+    <div className="space-y-6">
+      <div>
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-[var(--text-muted)] hover:text-[var(--text-secondary)] mb-4"
@@ -281,32 +280,25 @@ export default function OnlinePlaylistDetail() {
 
       {allApiSongs.length > 0 ? (
         filteredSongs.length > 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex-1 overflow-y-auto scrollbar-thin space-y-1"
-          >
+          <div>
             {searchQuery && (
               <div className="text-sm text-[var(--text-muted)] mb-2 px-1">
                 找到 {filteredSongs.length} 首歌曲
               </div>
             )}
-            {filteredSongs.map((song, index) => (
-              <SongRow
-                key={`${song.id}-${song.platform}-${index}`}
-                song={song}
-                index={index}
-                playlist={allApiSongs}
-                playlistId={`online-playlist-${platform}-${id}`}
-                showPlatform={false}
-              />
-            ))}
-            {hasMore && !searchQuery && (
-              <div ref={sentinelRef} className="min-h-16 flex items-center justify-center">
-                <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
-              </div>
-            )}
-          </motion.div>
+            <VirtualSongList
+              songs={filteredSongs}
+              playlist={allApiSongs}
+              playlistId={`online-playlist-${platform}-${id}`}
+              showPlatform={false}
+              scrollable={false}
+              footer={hasMore && !searchQuery ? (
+                <div ref={sentinelRef} className="min-h-16 flex items-center justify-center">
+                  <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : undefined}
+            />
+          </div>
         ) : (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">

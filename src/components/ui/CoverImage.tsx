@@ -9,13 +9,17 @@ interface CoverImageProps {
     alt: string
     className?: string
     fallback?: string
+    loading?: 'eager' | 'lazy'
+    decoding?: 'async' | 'sync' | 'auto'
 }
 
 export default function CoverImage({
     src,
     alt,
     className,
-    fallback = LOADING_GIF
+    fallback = LOADING_GIF,
+    loading = 'eager',
+    decoding = 'sync'
 }: CoverImageProps) {
     const shouldResolveGateway = Boolean(src && isGatewayCoverUrl(src))
     const imgRef = useRef<HTMLImageElement | null>(null)
@@ -97,11 +101,12 @@ export default function CoverImage({
     }, [displaySrc, isLoading])
 
     return (
-        <div className={cn('relative overflow-hidden', className)}>
+        <div className={cn('relative overflow-hidden bg-gray-200/70 dark:bg-gray-800/70', className)}>
             {isLoading && resolvedSrc && (
                 <img
                     src={LOADING_GIF}
-                    alt="Loading..."
+                    alt=""
+                    aria-hidden="true"
                     className="absolute inset-0 w-full h-full object-cover"
                 />
             )}
@@ -110,14 +115,11 @@ export default function CoverImage({
                 ref={imgRef}
                 src={displaySrc}
                 alt={alt}
-                loading="lazy"
-                decoding="async"
+                loading={loading}
+                decoding={decoding}
                 onLoad={handleLoad}
                 onError={handleError}
-                className={cn(
-                    'w-full h-full object-cover',
-                    isLoading && resolvedSrc && 'opacity-0'
-                )}
+                className="relative z-10 w-full h-full object-cover"
             />
         </div>
     )

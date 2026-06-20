@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Play, RefreshCw, Calendar, ArrowLeft } from 'lucide-react'
-import { motion } from 'framer-motion'
 import { useAuthStore } from '@/stores/authStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useUIStore } from '@/stores/uiStore'
@@ -67,9 +66,9 @@ export default function DailyRecommend() {
     }
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="space-y-6">
             {/* Header */}
-            <div className="flex-shrink-0 mb-6">
+            <div>
                 {/* Back button */}
                 <button
                     onClick={() => navigate(-1)}
@@ -122,11 +121,7 @@ export default function DailyRecommend() {
 
             {/* Song list */}
             {dailyRecommend.songs.length > 0 ? (
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="flex-1 overflow-y-auto scrollbar-thin space-y-1"
-                >
+                <div className="space-y-1">
                     {(dailyRecommend.songs as Song[]).map((song, index) => (
                         <SongRow
                             key={`${song.id}-${song.platform}`}
@@ -137,7 +132,7 @@ export default function DailyRecommend() {
                             showPlatform={false}
                         />
                     ))}
-                </motion.div>
+                </div>
             ) : (
                 <div className="flex-1 flex items-center justify-center">
                     <div className="text-center">

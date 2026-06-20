@@ -358,7 +358,7 @@ export default function NeteaseHome() {
     }
 
     return (
-        <div className="h-full overflow-y-auto overflow-x-hidden scrollbar-thin min-w-0">
+        <div className="min-w-0">
             {/* Header with Search */}
             <div className="mb-6 min-w-0">
                 <div className="flex items-center justify-between mb-4">
@@ -386,7 +386,7 @@ export default function NeteaseHome() {
                     <select
                         value={searchType}
                         onChange={(e) => setSearchType(Number(e.target.value))}
-                        className="flex-shrink-0 rounded-2xl border border-black/10 bg-black/5 px-3 py-2 text-sm text-[var(--text-secondary)] outline-none backdrop-blur-xl transition-colors hover:bg-black/[0.07] focus:border-red-400/70 focus:bg-white/70 dark:border-white/10 dark:bg-white/10 dark:text-[var(--text-primary)] dark:hover:bg-white/15 dark:focus:border-red-400/60 dark:focus:bg-white/15"
+                        className="flex-shrink-0 rounded-2xl border border-black/10 bg-black/5 px-3 py-2 text-sm text-[var(--text-secondary)] outline-none transition-colors hover:bg-black/[0.07] focus:border-red-400/70 focus:bg-white/70 dark:border-white/10 dark:bg-white/10 dark:text-[var(--text-primary)] dark:hover:bg-white/15 dark:focus:border-red-400/60 dark:focus:bg-white/15"
                     >
                         {SEARCH_TYPE_OPTIONS.map((opt) => (
                             <option key={opt.value} value={opt.value}>
@@ -402,7 +402,7 @@ export default function NeteaseHome() {
                             onChange={(e) => setSearchKeyword(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                             placeholder="搜索歌曲、歌手、专辑、歌单..."
-                            className="w-full rounded-full bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border border-white/20 dark:border-gray-700/30 py-2 pl-9 pr-9 text-sm text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-muted)] focus:bg-white/70 dark:focus:bg-gray-800/70 focus:shadow-sm"
+                            className="w-full rounded-full bg-white/50 dark:bg-gray-800/50 border border-white/20 dark:border-gray-700/30 py-2 pl-9 pr-9 text-sm text-[var(--text-primary)] outline-none transition-all placeholder:text-[var(--text-muted)] focus:bg-white/70 dark:focus:bg-gray-800/70 focus:shadow-sm"
                         />
                         {searchKeyword && (
                             <button
