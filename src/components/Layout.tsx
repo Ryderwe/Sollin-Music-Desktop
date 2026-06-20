@@ -44,6 +44,7 @@ import LxLyricPlayer, { DEFAULT_LYRIC_COLORS, type LyricColorSettings } from '@/
 import AmllFullPlayer from '@/components/player/AmllFullPlayer'
 import PlaybackQualityMenu from '@/components/player/PlaybackQualityMenu'
 import PlaybackRateMenu from '@/components/player/PlaybackRateMenu'
+import { PLAYER_MODE_OPTIONS } from '@/constants/playerModes'
 import { useCoverBackdrop, resolveBackgroundTheme, type ResolvedBackground } from '@/hooks/useCoverBackdrop'
 import { EQ_FREQUENCIES, EQ_PRESETS, REVERB_PRESETS } from '@/utils/audioEffects'
 import { isSamePlayableSong } from '@/utils/songIdentity'
@@ -774,6 +775,8 @@ function LyricsPanel({
   const setLyricsPanelTab = useUIStore((s) => s.setLyricsPanelTab)
   const lyricsLeftPanelCollapsed = useUIStore((s) => s.lyricsLeftPanelCollapsed)
   const setLyricsLeftPanelCollapsed = useUIStore((s) => s.setLyricsLeftPanelCollapsed)
+  const lyricsPlayerMode = useUIStore((s) => s.lyricsPlayerMode)
+  const setLyricsPlayerMode = useUIStore((s) => s.setLyricsPlayerMode)
   const theme = useUIStore((s) => s.theme)
   const playlists = useUserStore((s) => s.playlists)
   const localPlaylists = useUserStore((s) => s.localPlaylists)
@@ -1575,7 +1578,28 @@ function LyricsPanel({
               {/* Settings panel - floating */}
               {showSettings && (
                 <div className={popoverClass}>
-                  <h3 className="mb-3 text-sm font-medium">歌词设置</h3>
+                  <h3 className="mb-3 text-sm font-medium">播放界面</h3>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {PLAYER_MODE_OPTIONS.map(({ id, label, icon: Icon }) => (
+                      <button
+                        key={id}
+                        onClick={() => {
+                          setLyricsPlayerMode(id)
+                          setShowSettings(false)
+                        }}
+                        className={cn(
+                          'flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs transition-colors',
+                          lyricsPlayerMode === id ? switchOnClass : switchOffClass
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <h3 className={cn('mb-3 mt-4 border-t pt-3 text-sm font-medium', isDarkAppearance ? 'border-white/10' : 'border-black/[0.06]')}>歌词设置</h3>
 
                   {/* Font size */}
                   <div className="mb-3 flex items-center justify-between">
