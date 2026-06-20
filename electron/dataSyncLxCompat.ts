@@ -7,7 +7,7 @@ import { constants, createCipheriv, createDecipheriv, createHash, generateKeyPai
 import { gzip, gunzip } from 'node:zlib'
 import WebSocket, { WebSocketServer } from 'ws'
 import { createMsg2call } from 'message2call'
-import type { DataSyncDeviceInfo, DataSyncSnapshotData } from './dataSyncShared'
+import type { DataSyncConflictResolutionMode, DataSyncDeviceInfo, DataSyncSnapshotData } from './dataSyncShared'
 
 const HELLO_MSG = 'Hello~::^-^::~v4~'
 const ID_PREFIX = 'OjppZDo6'
@@ -18,6 +18,7 @@ const CONNECT_MSG = 'lx-music connect'
 const SOCKET_PATH = '/socket'
 const CLOSE_CODE_FAILED = 4100
 const COMPAT_STATE_FILE = 'data-sync-lx-compat.json'
+const MAX_COMPAT_SNAPSHOT_COUNT = 10
 
 type LxCompatClientKeyInfo = {
   clientId: string
@@ -27,9 +28,32 @@ type LxCompatClientKeyInfo = {
   lastConnectDate: number
 }
 
+type LxCompatClientStoredAuthKey = {
+  clientId: string
+  key: string
+  serverName: string
+}
+
+type LxCompatSnapshotClientInfo = {
+  snapshotKey: string
+  lastSyncDate: number
+}
+
+type LxCompatSnapshotInfo = {
+  latest: string | null
+  time: number
+  list: string[]
+  clients: Record<string, LxCompatSnapshotClientInfo>
+}
+
 type LxCompatPersistedState = {
   serverId: string
   clients: Record<string, LxCompatClientKeyInfo>
+  clientAuthKeys: Record<string, LxCompatClientStoredAuthKey>
+  listSnapshotInfo: LxCompatSnapshotInfo
+  dislikeSnapshotInfo: LxCompatSnapshotInfo
+  listSnapshots: Record<string, LxListData>
+  dislikeSnapshots: Record<string, string>
 }
 
 type LxMusicInfo = {
@@ -77,12 +101,14 @@ type LxCompatBridgeOptions = {
   getConnectionCode: () => string
   getCurrentSnapshotData: () => DataSyncSnapshotData | null
   setCurrentSnapshotData: (data: DataSyncSnapshotData, sourceId?: string, sourceName?: string) => void
+  getDefaultSyncMode: () => DataSyncConflictResolutionMode | null
   onDevicesChanged: (devices: DataSyncDeviceInfo[], trustedDevices: DataSyncDeviceInfo[]) => void
 }
 
 type LxCompatClientOptions = {
   getCurrentSnapshotData: () => DataSyncSnapshotData | null
   setCurrentSnapshotData: (data: DataSyncSnapshotData, sourceId?: string, sourceName?: string) => void
+  getDefaultSyncMode: () => DataSyncConflictResolutionMode | null
   onStatusChanged: () => void
   onDisconnected?: () => void
   onError?: (message: string | null) => void
@@ -448,17 +474,9 @@ const mergeSongLists = (preferred: LxMusicInfo[], fallback: LxMusicInfo[]) => {
     for (const song of list) {
       const key = getSongIdentity(song)
       if (!key) continue
-      if (!map.has(key)) {
-        order.push(key)
-      }
-      map.set(key, {
-        ...map.get(key),
-        ...song,
-        meta: {
-          ...(map.get(key)?.meta || {}),
-          ...(song.meta || {}),
-        },
-      })
+      if (map.has(key)) continue
+      order.push(key)
+      map.set(key, clone(song))
     }
   }
 
@@ -466,33 +484,33 @@ const mergeSongLists = (preferred: LxMusicInfo[], fallback: LxMusicInfo[]) => {
 }
 
 const mergeUserLists = (preferred: LxUserListInfoFull[], fallback: LxUserListInfoFull[]) => {
-  const map = new Map<string, LxUserListInfoFull>()
-  const order: string[] = []
+  const userListDataObj = new Map<string, LxUserListInfoFull>()
+  const newUserList = preferred.map((playlist) => {
+    const cloned = clone(playlist)
+    userListDataObj.set(cloned.id, cloned)
+    return cloned
+  })
 
-  for (const playlist of preferred) {
-    map.set(playlist.id, clone(playlist))
-    order.push(playlist.id)
-  }
-
-  for (const playlist of fallback) {
-    const existing = map.get(playlist.id)
-    if (!existing) {
-      map.set(playlist.id, clone(playlist))
-      order.push(playlist.id)
-      continue
+  fallback.forEach((playlist, index) => {
+    const targetUpdateTime = playlist?.locationUpdateTime ?? 0
+    const sourceList = userListDataObj.get(playlist.id)
+    if (sourceList) {
+      sourceList.list = mergeSongLists(sourceList.list || [], playlist.list || [])
+      const sourceUpdateTime = sourceList?.locationUpdateTime ?? 0
+      if (targetUpdateTime >= sourceUpdateTime) return
+      const currentIndex = newUserList.findIndex((list) => list.id === playlist.id)
+      if (currentIndex < 0) return
+      const [newList] = newUserList.splice(currentIndex, 1)
+      newList.locationUpdateTime = targetUpdateTime
+      newUserList.splice(Math.min(index, newUserList.length), 0, newList)
+    } else if (targetUpdateTime) {
+      newUserList.splice(Math.min(index, newUserList.length), 0, clone(playlist))
+    } else {
+      newUserList.push(clone(playlist))
     }
+  })
 
-    map.set(playlist.id, {
-      ...existing,
-      ...playlist,
-      source: existing.source || playlist.source,
-      sourceListId: existing.sourceListId || playlist.sourceListId,
-      locationUpdateTime: Math.max(existing.locationUpdateTime || 0, playlist.locationUpdateTime || 0) || null,
-      list: mergeSongLists(existing.list || [], playlist.list || []),
-    })
-  }
-
-  return order.map((id) => map.get(id)!).filter(Boolean)
+  return newUserList
 }
 
 const hasListData = (data: LxListData) => (
@@ -504,6 +522,24 @@ const mergeListData = (localData: LxListData, remoteData: LxListData): LxListDat
   loveList: mergeSongLists(localData.loveList, remoteData.loveList),
   userList: mergeUserLists(localData.userList, remoteData.userList),
 })
+
+const overwriteListData = (sourceListData: LxListData, targetListData: LxListData): LxListData => {
+  const newListData: LxListData = {
+    defaultList: clone(sourceListData.defaultList),
+    loveList: clone(sourceListData.loveList),
+    userList: clone(sourceListData.userList),
+  }
+  const sourceUserListIds = new Set(sourceListData.userList.map((list) => list.id))
+  targetListData.userList.forEach((list, index) => {
+    if (sourceUserListIds.has(list.id)) return
+    if (list?.locationUpdateTime) {
+      newListData.userList.splice(Math.min(index, newListData.userList.length), 0, clone(list))
+    } else {
+      newListData.userList.push(clone(list))
+    }
+  })
+  return newListData
+}
 
 const normalizeListData = (value: unknown): LxListData => {
   const raw = (value && typeof value === 'object') ? value as Partial<LxListData> : {}
@@ -528,13 +564,226 @@ const mergeDislikeRules = (localRules: string, remoteRules: string) => {
   return Array.from(merged).join('\n')
 }
 
+const filterDislikeRules = (rules: string) => {
+  const filtered = new Set<string>()
+  for (const rule of normalizeDislikeRules(rules).split(/\r?\n/)) {
+    const normalized = rule.trim()
+    if (normalized) filtered.add(normalized)
+  }
+  return filtered
+}
+
+const getListDataKey = (listData: LxListData) => toMd5(JSON.stringify(normalizeListData(listData)))
+const getDislikeDataKey = (rules: string) => toMd5(normalizeDislikeRules(rules).trim())
+const isSameData = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
+const createUserListDataObj = (listData: LxListData) => {
+  const userListDataObj = new Map<string, LxUserListInfoFull>()
+  for (const list of listData.userList) userListDataObj.set(list.id, list)
+  return userListDataObj
+}
+
+const selectSnapshotData = <T,>(snapshot: T | null | undefined, local: T, remote: T): T => (
+  snapshot === local ? remote : local
+)
+
+const mergeSongListsFromSnapshot = (
+  localList: LxMusicInfo[],
+  remoteList: LxMusicInfo[],
+  snapshotList: LxMusicInfo[],
+) => {
+  const removedListIds = new Set<string>()
+  const localListItemIds = new Set(localList.map(getSongIdentity))
+  const remoteListItemIds = new Set(remoteList.map(getSongIdentity))
+
+  for (const song of snapshotList || []) {
+    const key = getSongIdentity(song)
+    if (!localListItemIds.has(key) || !remoteListItemIds.has(key)) removedListIds.add(key)
+  }
+
+  const map = new Map<string, LxMusicInfo>()
+  const ids: string[] = []
+  for (const item of [...localList, ...remoteList]) {
+    const key = getSongIdentity(item)
+    if (!key || map.has(key) || removedListIds.has(key)) continue
+    ids.push(key)
+    map.set(key, clone(item))
+  }
+  return ids.map((id) => map.get(id)!).filter(Boolean)
+}
+
+const mergeListDataFromSnapshot = (localListData: LxListData, remoteListData: LxListData, snapshot: LxListData): LxListData => {
+  const newListData: LxListData = {
+    defaultList: mergeSongListsFromSnapshot(localListData.defaultList, remoteListData.defaultList, snapshot.defaultList),
+    loveList: mergeSongListsFromSnapshot(localListData.loveList, remoteListData.loveList, snapshot.loveList),
+    userList: [],
+  }
+
+  const localUserListData = createUserListDataObj(localListData)
+  const remoteUserListData = createUserListDataObj(remoteListData)
+  const snapshotUserListData = createUserListDataObj(snapshot)
+  const removedListIds = new Set<string>()
+  const localUserListIds = new Set(localListData.userList.map((list) => list.id))
+  const remoteUserListIds = new Set(remoteListData.userList.map((list) => list.id))
+
+  for (const list of snapshot.userList) {
+    if (!localUserListIds.has(list.id) || !remoteUserListIds.has(list.id)) removedListIds.add(list.id)
+  }
+
+  const newUserList: LxUserListInfoFull[] = []
+  for (const list of localListData.userList) {
+    if (removedListIds.has(list.id)) continue
+    const remoteList = remoteUserListData.get(list.id)
+    let newList: LxUserListInfoFull
+    if (remoteList) {
+      const snapshotList = snapshotUserListData.get(list.id) ?? {
+        id: list.id,
+        name: null as unknown as string,
+        source: null as unknown as string,
+        sourceListId: null as unknown as string,
+        locationUpdateTime: null,
+        list: [],
+      }
+      newList = {
+        ...list,
+        name: selectSnapshotData(snapshotList.name, list.name, remoteList.name),
+        source: selectSnapshotData(snapshotList.source, list.source, remoteList.source),
+        sourceListId: selectSnapshotData(snapshotList.sourceListId, list.sourceListId, remoteList.sourceListId),
+        locationUpdateTime: list.locationUpdateTime,
+        list: mergeSongListsFromSnapshot(list.list || [], remoteList.list || [], snapshotList.list || []),
+      }
+    } else {
+      newList = clone(list)
+    }
+    newUserList.push(newList)
+  }
+
+  remoteListData.userList.forEach((list, index) => {
+    if (removedListIds.has(list.id)) return
+    const remoteUpdateTime = list?.locationUpdateTime ?? 0
+    if (localUserListData.has(list.id)) {
+      const localUpdateTime = localUserListData.get(list.id)?.locationUpdateTime ?? 0
+      if (localUpdateTime >= remoteUpdateTime) return
+      const currentIndex = newUserList.findIndex((item) => item.id === list.id)
+      if (currentIndex < 0) return
+      const [newList] = newUserList.splice(currentIndex, 1)
+      newList.locationUpdateTime = localUpdateTime
+      newUserList.splice(Math.min(index, newUserList.length), 0, newList)
+    } else if (remoteUpdateTime) {
+      newUserList.splice(Math.min(index, newUserList.length), 0, clone(list))
+    } else {
+      newUserList.push(clone(list))
+    }
+  })
+
+  newListData.userList = newUserList
+  return newListData
+}
+
+const mergeDislikeDataFromSnapshot = (localRules: string, remoteRules: string, snapshotRules: string) => {
+  const removedRules = new Set<string>()
+  const localRuleSet = filterDislikeRules(localRules)
+  const remoteRuleSet = filterDislikeRules(remoteRules)
+
+  for (const rule of filterDislikeRules(snapshotRules)) {
+    if (!localRuleSet.has(rule) || !remoteRuleSet.has(rule)) removedRules.add(rule)
+  }
+
+  return Array.from(new Set([...localRuleSet, ...remoteRuleSet].filter((rule) => !removedRules.has(rule)))).join('\n')
+}
+
+const createDefaultSnapshotInfo = (): LxCompatSnapshotInfo => ({
+  latest: null,
+  time: 0,
+  list: [],
+  clients: {},
+})
+
+const createDefaultPersistedState = (): LxCompatPersistedState => ({
+  serverId: randomBytes(16).toString('base64'),
+  clients: {},
+  clientAuthKeys: {},
+  listSnapshotInfo: createDefaultSnapshotInfo(),
+  dislikeSnapshotInfo: createDefaultSnapshotInfo(),
+  listSnapshots: {},
+  dislikeSnapshots: {},
+})
+
+const normalizeSnapshotInfo = (value: unknown): LxCompatSnapshotInfo => {
+  const raw = value && typeof value === 'object' ? value as Partial<LxCompatSnapshotInfo> : {}
+  return {
+    latest: typeof raw.latest === 'string' && raw.latest ? raw.latest : null,
+    time: Number.isFinite(raw.time) ? Number(raw.time) : 0,
+    list: Array.isArray(raw.list) ? raw.list.filter((item): item is string => typeof item === 'string') : [],
+    clients: raw.clients && typeof raw.clients === 'object'
+      ? Object.fromEntries(Object.entries(raw.clients).filter((entry): entry is [string, LxCompatSnapshotClientInfo] => {
+          const [, client] = entry
+          return Boolean(client && typeof client === 'object' && typeof client.snapshotKey === 'string')
+        }).map(([clientId, client]) => [clientId, {
+          snapshotKey: client.snapshotKey,
+          lastSyncDate: Number.isFinite(client.lastSyncDate) ? Number(client.lastSyncDate) : 0,
+        }]))
+      : {},
+  }
+}
+
+const normalizeCompatPersistedState = (value: unknown): LxCompatPersistedState => {
+  const fallback = createDefaultPersistedState()
+  const raw = value && typeof value === 'object' ? value as Partial<LxCompatPersistedState> : {}
+  return {
+    serverId: typeof raw.serverId === 'string' && raw.serverId.trim() ? raw.serverId : fallback.serverId,
+    clients: raw.clients && typeof raw.clients === 'object'
+      ? raw.clients as Record<string, LxCompatClientKeyInfo>
+      : {},
+    clientAuthKeys: raw.clientAuthKeys && typeof raw.clientAuthKeys === 'object'
+      ? raw.clientAuthKeys as Record<string, LxCompatClientStoredAuthKey>
+      : {},
+    listSnapshotInfo: normalizeSnapshotInfo(raw.listSnapshotInfo),
+    dislikeSnapshotInfo: normalizeSnapshotInfo(raw.dislikeSnapshotInfo),
+    listSnapshots: raw.listSnapshots && typeof raw.listSnapshots === 'object'
+      ? Object.fromEntries(Object.entries(raw.listSnapshots).map(([key, value]) => [key, normalizeListData(value)]))
+      : {},
+    dislikeSnapshots: raw.dislikeSnapshots && typeof raw.dislikeSnapshots === 'object'
+      ? Object.fromEntries(Object.entries(raw.dislikeSnapshots).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+      : {},
+  }
+}
+
+const getCompatStateFilePath = () => path.join(app.getPath('userData'), COMPAT_STATE_FILE)
+
+const readCompatPersistedState = () => {
+  try {
+    const filePath = getCompatStateFilePath()
+    if (!fs.existsSync(filePath)) return createDefaultPersistedState()
+    const raw = fs.readFileSync(filePath, 'utf8').trim()
+    if (!raw) return createDefaultPersistedState()
+    return normalizeCompatPersistedState(JSON.parse(raw))
+  } catch {
+    return createDefaultPersistedState()
+  }
+}
+
+let compatPersistWriteQueue = Promise.resolve()
+
+const writeCompatPersistedState = (state: LxCompatPersistedState) => {
+  const payload = JSON.stringify(state, null, 2)
+  compatPersistWriteQueue = compatPersistWriteQueue
+    .catch(() => {})
+    .then(() => fs.promises.writeFile(getCompatStateFilePath(), payload))
+    .catch((error) => {
+      console.warn('[data-sync][lx-compat] persist failed:', error)
+    })
+}
+
 const getPromptWindow = () => (
   BrowserWindow.getFocusedWindow()
   ?? BrowserWindow.getAllWindows().find((window) => !window.isDestroyed())
   ?? null
 )
 
-const chooseListSyncMode = async(deviceName: string): Promise<LxListSyncMode> => {
+const chooseListSyncMode = async(deviceName: string, defaultMode: DataSyncConflictResolutionMode | null): Promise<LxListSyncMode> => {
+  if (defaultMode) return defaultMode
+
   const promptWindow = getPromptWindow()
   const options: Electron.MessageBoxOptions = {
     type: 'question',
@@ -570,7 +819,9 @@ const chooseListSyncMode = async(deviceName: string): Promise<LxListSyncMode> =>
   }
 }
 
-const chooseDislikeSyncMode = async(deviceName: string): Promise<LxDislikeSyncMode> => {
+const chooseDislikeSyncMode = async(deviceName: string, defaultMode: DataSyncConflictResolutionMode | null): Promise<LxDislikeSyncMode> => {
+  if (defaultMode) return defaultMode
+
   const promptWindow = getPromptWindow()
   const options: Electron.MessageBoxOptions = {
     type: 'question',
@@ -890,9 +1141,11 @@ export class DataSyncLxCompatClient {
   private readonly options: LxCompatClientOptions
   private socket: LxCompatClientSocket | null = null
   private connectSerial = 0
+  private persisted: LxCompatPersistedState
 
   constructor(options: LxCompatClientOptions) {
     this.options = options
+    this.persisted = readCompatPersistedState()
   }
 
   private getCurrentSnapshotOrDefault() {
@@ -919,16 +1172,40 @@ export class DataSyncLxCompatClient {
     }
   }
 
-  private async auth(clientHost: string, connectionCode: string): Promise<LxCompatClientAuthInfo> {
-    const helloResponse = await requestText(createCompatHttpUrl(clientHost, '/hello'))
-    if (helloResponse.statusCode !== 200 || helloResponse.text.trim() !== HELLO_MSG) {
-      throw new Error(`LX 同步服务握手失败 (${helloResponse.statusCode || '无状态码'})`)
-    }
+  private persistState() {
+    writeCompatPersistedState(this.persisted)
+  }
 
-    const idResponse = await requestText(createCompatHttpUrl(clientHost, '/id'))
-    if (idResponse.statusCode !== 200 || !idResponse.text.startsWith(ID_PREFIX)) {
-      throw new Error(`LX 同步服务 ID 获取失败 (${idResponse.statusCode || '无状态码'})`)
+  private saveAuthKey(serverId: string, keyInfo: LxCompatClientAuthInfo) {
+    this.persisted.clientAuthKeys[serverId] = {
+      clientId: keyInfo.clientId,
+      key: keyInfo.key,
+      serverName: keyInfo.serverName,
     }
+    this.persistState()
+  }
+
+  private async authWithStoredKey(clientHost: string, keyInfo: LxCompatClientStoredAuthKey) {
+    const authMessage = aesEncrypt(`${AUTH_MSG}${this.options.getDeviceName()}`, keyInfo.key)
+    const authResponse = await requestText(createCompatHttpUrl(clientHost, '/ah'), {
+      headers: {
+        i: keyInfo.clientId,
+        m: authMessage,
+      },
+    })
+    if (authResponse.statusCode !== 200) throw new Error('LX 同步已保存认证无效')
+
+    let text: string
+    try {
+      text = aesDecrypt(authResponse.text.trim(), keyInfo.key)
+    } catch {
+      throw new Error('LX 同步已保存认证解析失败')
+    }
+    if (text !== HELLO_MSG) throw new Error('LX 同步已保存认证无效')
+  }
+
+  private async authWithConnectionCode(clientHost: string, serverId: string, connectionCode: string): Promise<LxCompatClientAuthInfo> {
+    if (!connectionCode.trim()) throw new Error('请先填写连接码')
 
     let authKey = toMd5(connectionCode).substring(0, 16)
     authKey = Buffer.from(authKey).toString('base64')
@@ -962,19 +1239,42 @@ export class DataSyncLxCompatClient {
       throw new Error('LX 同步认证响应缺少客户端密钥')
     }
 
-    return {
+    const keyInfo = {
       clientId: parsed.clientId,
       key: parsed.key,
       serverName: parsed.serverName || 'LX Sync Server',
     }
+    this.saveAuthKey(serverId, keyInfo)
+    return keyInfo
   }
 
-  async connect(clientHost: string, connectionCode: string) {
+  private async auth(clientHost: string, connectionCode?: string, forceCodeAuth = false): Promise<LxCompatClientAuthInfo> {
+    const helloResponse = await requestText(createCompatHttpUrl(clientHost, '/hello'))
+    if (helloResponse.statusCode !== 200 || helloResponse.text.trim() !== HELLO_MSG) {
+      throw new Error(`LX 同步服务握手失败 (${helloResponse.statusCode || '无状态码'})`)
+    }
+
+    const idResponse = await requestText(createCompatHttpUrl(clientHost, '/id'))
+    if (idResponse.statusCode !== 200 || !idResponse.text.startsWith(ID_PREFIX)) {
+      throw new Error(`LX 同步服务 ID 获取失败 (${idResponse.statusCode || '无状态码'})`)
+    }
+    const serverId = idResponse.text.slice(ID_PREFIX.length)
+
+    const storedKey = this.persisted.clientAuthKeys[serverId]
+    if (!forceCodeAuth && storedKey) {
+      await this.authWithStoredKey(clientHost, storedKey)
+      return storedKey
+    }
+
+    return this.authWithConnectionCode(clientHost, serverId, connectionCode || '')
+  }
+
+  async connect(clientHost: string, connectionCode?: string, forceCodeAuth = false) {
     await this.disconnect()
     const serial = ++this.connectSerial
     this.setLastError(null)
 
-    const keyInfo = await this.auth(clientHost, connectionCode)
+    const keyInfo = await this.auth(clientHost, connectionCode, forceCodeAuth)
     if (serial !== this.connectSerial) throw new Error('LX 同步连接已取消')
 
     const socketUrl = createCompatSocketUrl(clientHost)
@@ -1059,7 +1359,7 @@ export class DataSyncLxCompatClient {
             toMd5(JSON.stringify(buildLxListData(this.getCurrentSnapshotOrDefault())))
           ),
           list_sync_get_sync_mode: async() => (
-            chooseListSyncMode(keyInfo.serverName)
+            chooseListSyncMode(keyInfo.serverName, this.options.getDefaultSyncMode())
           ),
           list_sync_get_list_data: async() => (
             buildLxListData(this.getCurrentSnapshotOrDefault())
@@ -1075,7 +1375,7 @@ export class DataSyncLxCompatClient {
             toMd5(normalizeDislikeRules(this.getCurrentSnapshotOrDefault().feature.dislikeRules).trim())
           ),
           dislike_sync_get_sync_mode: async() => (
-            chooseDislikeSyncMode(keyInfo.serverName)
+            chooseDislikeSyncMode(keyInfo.serverName, this.options.getDefaultSyncMode())
           ),
           dislike_sync_get_list_data: async() => (
             normalizeDislikeRules(this.getCurrentSnapshotOrDefault().feature.dislikeRules)
@@ -1241,39 +1541,12 @@ export class DataSyncLxCompatBridge {
     this.persisted = this.loadPersistedState()
   }
 
-  private getStateFilePath() {
-    return path.join(app.getPath('userData'), COMPAT_STATE_FILE)
-  }
-
   private loadPersistedState(): LxCompatPersistedState {
-    const fallback: LxCompatPersistedState = {
-      serverId: randomBytes(16).toString('base64'),
-      clients: {},
-    }
-
-    try {
-      const filePath = this.getStateFilePath()
-      if (!fs.existsSync(filePath)) return fallback
-      const raw = fs.readFileSync(filePath, 'utf8').trim()
-      if (!raw) return fallback
-      const parsed = JSON.parse(raw) as Partial<LxCompatPersistedState>
-      return {
-        serverId: typeof parsed.serverId === 'string' && parsed.serverId.trim()
-          ? parsed.serverId
-          : fallback.serverId,
-        clients: parsed.clients && typeof parsed.clients === 'object'
-          ? parsed.clients as Record<string, LxCompatClientKeyInfo>
-          : {},
-      }
-    } catch {
-      return fallback
-    }
+    return readCompatPersistedState()
   }
 
   private persistState() {
-    fs.promises.writeFile(this.getStateFilePath(), JSON.stringify(this.persisted, null, 2)).catch((error) => {
-      console.warn('[data-sync][lx-compat] persist failed:', error)
-    })
+    writeCompatPersistedState(this.persisted)
   }
 
   private getRequestIp(req: http.IncomingMessage) {
@@ -1288,6 +1561,91 @@ export class DataSyncLxCompatBridge {
 
   private getCurrentSnapshotOrDefault() {
     return clone(this.options.getCurrentSnapshotData() || emptySnapshot())
+  }
+
+  private clearOldSnapshots(type: 'list' | 'dislike') {
+    const info = type === 'list' ? this.persisted.listSnapshotInfo : this.persisted.dislikeSnapshotInfo
+    const referencedKeys = new Set<string>([
+      ...(info.latest ? [info.latest] : []),
+      ...Object.values(info.clients).map((client) => client.snapshotKey).filter(Boolean),
+    ])
+    const removableKeys = info.list.filter((key) => !referencedKeys.has(key))
+    while (removableKeys.length > MAX_COMPAT_SNAPSHOT_COUNT) {
+      const key = removableKeys.pop()
+      if (!key) break
+      if (type === 'list') {
+        delete this.persisted.listSnapshots[key]
+      } else {
+        delete this.persisted.dislikeSnapshots[key]
+      }
+      const index = info.list.indexOf(key)
+      if (index >= 0) info.list.splice(index, 1)
+    }
+  }
+
+  private createListSnapshot(listData: LxListData) {
+    const normalized = normalizeListData(listData)
+    const key = getListDataKey(normalized)
+    const info = this.persisted.listSnapshotInfo
+    this.persisted.listSnapshots[key] = clone(normalized)
+    if (info.latest !== key) {
+      if (info.latest && !info.list.includes(info.latest)) info.list.unshift(info.latest)
+      const existingIndex = info.list.indexOf(key)
+      if (existingIndex >= 0) info.list.splice(existingIndex, 1)
+      info.latest = key
+      info.time = Date.now()
+    }
+    this.clearOldSnapshots('list')
+    this.persistState()
+    return key
+  }
+
+  private createDislikeSnapshot(dislikeRules: string) {
+    const normalized = normalizeDislikeRules(dislikeRules)
+    const key = getDislikeDataKey(normalized)
+    const info = this.persisted.dislikeSnapshotInfo
+    this.persisted.dislikeSnapshots[key] = normalized
+    if (info.latest !== key) {
+      if (info.latest && !info.list.includes(info.latest)) info.list.unshift(info.latest)
+      const existingIndex = info.list.indexOf(key)
+      if (existingIndex >= 0) info.list.splice(existingIndex, 1)
+      info.latest = key
+      info.time = Date.now()
+    }
+    this.clearOldSnapshots('dislike')
+    this.persistState()
+    return key
+  }
+
+  private updateDeviceListSnapshotKey(clientId: string, snapshotKey: string) {
+    this.persisted.listSnapshotInfo.clients[clientId] = {
+      snapshotKey,
+      lastSyncDate: Date.now(),
+    }
+    this.persistState()
+  }
+
+  private updateDeviceDislikeSnapshotKey(clientId: string, snapshotKey: string) {
+    this.persisted.dislikeSnapshotInfo.clients[clientId] = {
+      snapshotKey,
+      lastSyncDate: Date.now(),
+    }
+    this.persistState()
+  }
+
+  private getDeviceListSnapshot(clientId: string) {
+    const snapshotKey = this.persisted.listSnapshotInfo.clients[clientId]?.snapshotKey
+    if (!snapshotKey) return null
+    const snapshot = this.persisted.listSnapshots[snapshotKey]
+    return snapshot ? normalizeListData(snapshot) : null
+  }
+
+  private getDeviceDislikeSnapshot(clientId: string) {
+    const snapshotKey = this.persisted.dislikeSnapshotInfo.clients[clientId]?.snapshotKey
+    if (!snapshotKey) return null
+    return typeof this.persisted.dislikeSnapshots[snapshotKey] === 'string'
+      ? this.persisted.dislikeSnapshots[snapshotKey]
+      : null
   }
 
   private getClientKeyInfo(clientId?: string | null) {
@@ -1316,8 +1674,14 @@ export class DataSyncLxCompatBridge {
     }
     if (this.persisted.clients[clientId]) {
       delete this.persisted.clients[clientId]
-      this.persistState()
     }
+    if (this.persisted.listSnapshotInfo.clients[clientId]) {
+      delete this.persisted.listSnapshotInfo.clients[clientId]
+    }
+    if (this.persisted.dislikeSnapshotInfo.clients[clientId]) {
+      delete this.persisted.dislikeSnapshotInfo.clients[clientId]
+    }
+    this.persistState()
     this.updateDevices()
   }
 
@@ -1475,29 +1839,21 @@ export class DataSyncLxCompatBridge {
   }
 
   private async handleIncomingListAction(peer: LxCompatPeer, action: any) {
-    let listData: LxListData
-    if (action?.action === 'list_data_overwrite' && action.data) {
-      listData = normalizeListData(action.data)
-    } else {
-      listData = normalizeListData(await peer.remoteQueueList.list_sync_get_list_data())
-    }
-
     const currentSnapshot = this.getCurrentSnapshotOrDefault()
+    const currentListData = buildLxListData(currentSnapshot)
+    const listData = applyLxListAction(currentListData, action)
     const nextSnapshot = applyLxListDataToSnapshot(currentSnapshot, listData)
     this.options.setCurrentSnapshotData(nextSnapshot, peer.keyInfo.clientId, peer.keyInfo.deviceName)
+    this.updateDeviceListSnapshotKey(peer.keyInfo.clientId, this.createListSnapshot(listData))
   }
 
   private async handleIncomingDislikeAction(peer: LxCompatPeer, action: any) {
-    let dislikeRules: string
-    if (action?.action === 'dislike_data_overwrite' && typeof action.data === 'string') {
-      dislikeRules = normalizeDislikeRules(action.data)
-    } else {
-      dislikeRules = normalizeDislikeRules(await peer.remoteQueueDislike.dislike_sync_get_list_data())
-    }
-
     const currentSnapshot = this.getCurrentSnapshotOrDefault()
+    const currentRules = normalizeDislikeRules(currentSnapshot.feature.dislikeRules)
+    const dislikeRules = applyLxDislikeAction(currentRules, action)
     const nextSnapshot = applyDislikeRulesToSnapshot(currentSnapshot, dislikeRules)
     this.options.setCurrentSnapshotData(nextSnapshot, peer.keyInfo.clientId, peer.keyInfo.deviceName)
+    this.updateDeviceDislikeSnapshotKey(peer.keyInfo.clientId, this.createDislikeSnapshot(dislikeRules))
   }
 
   private async syncList(peer: LxCompatPeer) {
@@ -1508,26 +1864,52 @@ export class DataSyncLxCompatBridge {
     let updateLocal = false
     let updateRemote = false
 
-    if (hasListData(localListData) && hasListData(remoteListData)) {
-      const mode = await chooseListSyncMode(peer.keyInfo.deviceName)
+    const deviceSnapshot = peer.feature.list && !peer.feature.list.skipSnapshot
+      ? this.getDeviceListSnapshot(peer.keyInfo.clientId)
+      : null
+
+    if (deviceSnapshot) {
+      const localKey = this.createListSnapshot(localListData)
+      const remoteKey = getListDataKey(remoteListData)
+      if (localKey === remoteKey) {
+        this.updateDeviceListSnapshotKey(peer.keyInfo.clientId, localKey)
+        await peer.remoteQueueList.list_sync_finished()
+        peer.moduleReadys.list = true
+        return
+      }
+      finalListData = mergeListDataFromSnapshot(localListData, remoteListData, deviceSnapshot)
+      updateLocal = !isSameData(finalListData, localListData)
+      updateRemote = !isSameData(finalListData, remoteListData)
+    } else if (hasListData(localListData) && hasListData(remoteListData)) {
+      const mode = await chooseListSyncMode(peer.keyInfo.deviceName, this.options.getDefaultSyncMode())
       switch (mode) {
         case 'merge_local_remote':
           finalListData = mergeListData(localListData, remoteListData)
-          updateLocal = JSON.stringify(finalListData) !== JSON.stringify(localListData)
-          updateRemote = JSON.stringify(finalListData) !== JSON.stringify(remoteListData)
+          updateLocal = !isSameData(finalListData, localListData)
+          updateRemote = !isSameData(finalListData, remoteListData)
           break
         case 'merge_remote_local':
           finalListData = mergeListData(remoteListData, localListData)
-          updateLocal = JSON.stringify(finalListData) !== JSON.stringify(localListData)
-          updateRemote = JSON.stringify(finalListData) !== JSON.stringify(remoteListData)
+          updateLocal = !isSameData(finalListData, localListData)
+          updateRemote = !isSameData(finalListData, remoteListData)
           break
         case 'overwrite_local_remote':
-          finalListData = localListData
-          updateRemote = JSON.stringify(finalListData) !== JSON.stringify(remoteListData)
+          finalListData = overwriteListData(localListData, remoteListData)
+          updateLocal = !isSameData(finalListData, localListData)
+          updateRemote = !isSameData(finalListData, remoteListData)
           break
         case 'overwrite_remote_local':
+          finalListData = overwriteListData(remoteListData, localListData)
+          updateLocal = !isSameData(finalListData, localListData)
+          updateRemote = !isSameData(finalListData, remoteListData)
+          break
+        case 'overwrite_local_remote_full':
+          finalListData = localListData
+          updateRemote = !isSameData(finalListData, remoteListData)
+          break
+        case 'overwrite_remote_local_full':
           finalListData = remoteListData
-          updateLocal = JSON.stringify(finalListData) !== JSON.stringify(localListData)
+          updateLocal = !isSameData(finalListData, localListData)
           break
         case 'cancel':
         default:
@@ -1549,6 +1931,7 @@ export class DataSyncLxCompatBridge {
       await peer.remoteQueueList.list_sync_set_list_data(finalListData)
     }
 
+    this.updateDeviceListSnapshotKey(peer.keyInfo.clientId, this.createListSnapshot(finalListData))
     await peer.remoteQueueList.list_sync_finished()
     peer.moduleReadys.list = true
   }
@@ -1561,8 +1944,24 @@ export class DataSyncLxCompatBridge {
     let updateLocal = false
     let updateRemote = false
 
-    if (localDislike.trim() && remoteDislike.trim()) {
-      const mode = await chooseDislikeSyncMode(peer.keyInfo.deviceName)
+    const deviceSnapshot = peer.feature.dislike && !peer.feature.dislike.skipSnapshot
+      ? this.getDeviceDislikeSnapshot(peer.keyInfo.clientId)
+      : null
+
+    if (deviceSnapshot != null) {
+      const localKey = this.createDislikeSnapshot(localDislike)
+      const remoteKey = getDislikeDataKey(remoteDislike)
+      if (localKey === remoteKey) {
+        this.updateDeviceDislikeSnapshotKey(peer.keyInfo.clientId, localKey)
+        await peer.remoteQueueDislike.dislike_sync_finished()
+        peer.moduleReadys.dislike = true
+        return
+      }
+      finalDislike = mergeDislikeDataFromSnapshot(localDislike, remoteDislike, deviceSnapshot)
+      updateLocal = finalDislike !== localDislike
+      updateRemote = finalDislike !== remoteDislike
+    } else if (localDislike.trim() && remoteDislike.trim()) {
+      const mode = await chooseDislikeSyncMode(peer.keyInfo.deviceName, this.options.getDefaultSyncMode())
       switch (mode) {
         case 'merge_local_remote':
         case 'merge_remote_local':
@@ -1598,6 +1997,7 @@ export class DataSyncLxCompatBridge {
       await peer.remoteQueueDislike.dislike_sync_set_list_data(finalDislike)
     }
 
+    this.updateDeviceDislikeSnapshotKey(peer.keyInfo.clientId, this.createDislikeSnapshot(finalDislike))
     await peer.remoteQueueDislike.dislike_sync_finished()
     peer.moduleReadys.dislike = true
   }
@@ -1752,6 +2152,8 @@ export class DataSyncLxCompatBridge {
     if (!this.peers.size) return
     const listData = buildLxListData(snapshotData)
     const dislikeRules = normalizeDislikeRules(snapshotData.feature.dislikeRules)
+    const listSnapshotKey = this.createListSnapshot(listData)
+    const dislikeSnapshotKey = this.createDislikeSnapshot(dislikeRules)
 
     for (const peer of this.peers) {
       if (peer.readyState !== WebSocket.OPEN || !peer.isReady) continue
@@ -1761,6 +2163,8 @@ export class DataSyncLxCompatBridge {
         void peer.remoteQueueList.onListSyncAction({
           action: 'list_data_overwrite',
           data: listData,
+        }).then(() => {
+          this.updateDeviceListSnapshotKey(peer.keyInfo.clientId, listSnapshotKey)
         }).catch((error: Error) => {
           console.warn('[data-sync][lx-compat] push list overwrite failed:', error)
           peer.close(CLOSE_CODE_FAILED)
@@ -1771,6 +2175,8 @@ export class DataSyncLxCompatBridge {
         void peer.remoteQueueDislike.onDislikeSyncAction({
           action: 'dislike_data_overwrite',
           data: dislikeRules,
+        }).then(() => {
+          this.updateDeviceDislikeSnapshotKey(peer.keyInfo.clientId, dislikeSnapshotKey)
         }).catch((error: Error) => {
           console.warn('[data-sync][lx-compat] push dislike overwrite failed:', error)
           peer.close(CLOSE_CODE_FAILED)

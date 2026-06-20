@@ -93,7 +93,7 @@ import {
 } from '@/utils/globalShortcuts'
 import { parseDislikeRules } from '@/services/dislikeRules'
 import dataSyncService from '@/services/dataSync'
-import type { DataSyncStatus } from '@/types/dataSync'
+import type { DataSyncConflictResolutionMode, DataSyncStatus } from '@/types/dataSync'
 
 const THEMES = [
   { id: 'light', label: '浅色', icon: Sun },
@@ -119,6 +119,33 @@ const DOWNLOAD_FILE_NAME_PART_LABELS: Record<DownloadFileNamePart, string> = {
   album: '专辑',
   title: '歌名',
 }
+
+const DATA_SYNC_CONFLICT_RESOLUTION_OPTIONS: Array<{
+  id: DataSyncConflictResolutionMode
+  label: string
+  description: string
+}> = [
+  {
+    id: 'merge_local_remote',
+    label: '本地合并远端',
+    description: '以本地歌单/收藏为主，把远端不同内容并进来',
+  },
+  {
+    id: 'merge_remote_local',
+    label: '远端合并本地',
+    description: '以远端歌单/收藏为主，把本地不同内容并进来',
+  },
+  {
+    id: 'overwrite_local_remote',
+    label: '本地覆盖远端',
+    description: '用本地歌单/收藏和屏蔽规则替换远端',
+  },
+  {
+    id: 'overwrite_remote_local',
+    label: '远端覆盖本地',
+    description: '用远端歌单/收藏和屏蔽规则替换本地',
+  },
+]
 
 const DOWNLOAD_FILE_NAME_SEPARATOR_PRESETS = ['-', ' - ', '｜', '_', '·'] as const
 
@@ -1426,6 +1453,37 @@ export default function Settings() {
     }
   }
 
+  const handleToggleAutoResolveSyncConflicts = async() => {
+    const nextEnabled = !dataSyncStatus.autoResolveSyncConflicts
+    setIsSavingDataSync(true)
+    try {
+      const status = await dataSyncService.updateConfig({
+        autoResolveSyncConflicts: nextEnabled,
+      })
+      setDataSyncStatus(status)
+      addToast({ type: 'success', message: nextEnabled ? '已启用默认同步方式' : '已恢复每次询问同步方式' })
+    } catch (error) {
+      addToast({ type: 'error', message: error instanceof Error ? error.message : '更新默认同步方式失败' })
+    } finally {
+      setIsSavingDataSync(false)
+    }
+  }
+
+  const handleChangeDataSyncConflictResolutionMode = async(mode: DataSyncConflictResolutionMode) => {
+    setIsSavingDataSync(true)
+    try {
+      const status = await dataSyncService.updateConfig({
+        conflictResolutionMode: mode,
+      })
+      setDataSyncStatus(status)
+      addToast({ type: 'success', message: '默认同步方式已更新' })
+    } catch (error) {
+      addToast({ type: 'error', message: error instanceof Error ? error.message : '更新默认同步方式失败' })
+    } finally {
+      setIsSavingDataSync(false)
+    }
+  }
+
   const handleApplyDataSyncClientHost = async() => {
     setIsSavingDataSync(true)
     try {
@@ -2353,6 +2411,43 @@ export default function Settings() {
               <p className="font-medium">连接模式</p>
               <p className="text-sm text-[var(--text-muted)] mt-1">连接另一台设备的同步服务，接入后同步远端快照和实时更新。</p>
             </button>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={dataSyncStatus.autoResolveSyncConflicts}
+                onChange={() => void handleToggleAutoResolveSyncConflicts()}
+                disabled={isSavingDataSync}
+                className="mt-1 h-4 w-4 accent-primary-500"
+              />
+              <span className="flex-1">
+                <span className="block font-medium">以后自动使用默认同步方式</span>
+                <span className="block text-sm text-[var(--text-muted)] mt-1">
+                  本地和远端都有歌单/收藏或屏蔽规则时，不再弹窗选择。
+                </span>
+              </span>
+            </label>
+
+            <div className="grid grid-cols-1 md:grid-cols-[160px_1fr] gap-3 items-start">
+              <label className="text-sm font-medium pt-2">默认同步方式</label>
+              <div className="space-y-2">
+                <select
+                  value={dataSyncStatus.conflictResolutionMode}
+                  onChange={(event) => void handleChangeDataSyncConflictResolutionMode(event.target.value as DataSyncConflictResolutionMode)}
+                  disabled={isSavingDataSync}
+                  className="input h-10 w-full"
+                >
+                  {DATA_SYNC_CONFLICT_RESOLUTION_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {DATA_SYNC_CONFLICT_RESOLUTION_OPTIONS.find((option) => option.id === dataSyncStatus.conflictResolutionMode)?.description}
+                </p>
+              </div>
+            </div>
           </div>
 
           {dataSyncStatus.mode === 'server' ? (

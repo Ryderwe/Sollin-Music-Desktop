@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto'
 import WebSocket, { WebSocketServer } from 'ws'
 import type {
   DataSyncConfig,
+  DataSyncConflictResolutionMode,
   DataSyncDeviceInfo,
   DataSyncMode,
   DataSyncSnapshot,
@@ -14,6 +15,7 @@ import type {
   DataSyncStatus,
 } from './dataSyncShared'
 import {
+  DATA_SYNC_CONFLICT_RESOLUTION_MODES,
   DEFAULT_DATA_SYNC_PORT,
   createDefaultDataSyncConfig,
 } from './dataSyncShared'
@@ -45,6 +47,12 @@ const normalizePort = (value: unknown): number => {
   if (!Number.isFinite(port)) return DEFAULT_DATA_SYNC_PORT
   return Math.min(65535, Math.max(1024, Math.trunc(port)))
 }
+
+const normalizeConflictResolutionMode = (value: unknown): DataSyncConflictResolutionMode => (
+  DATA_SYNC_CONFLICT_RESOLUTION_MODES.includes(value as DataSyncConflictResolutionMode)
+    ? value as DataSyncConflictResolutionMode
+    : 'merge_local_remote'
+)
 
 const isRecord = (value: unknown): value is Record<string, any> => (
   typeof value === 'object' && value !== null && Object.prototype.toString.call(value) === '[object Object]'
@@ -216,8 +224,9 @@ const createClientSocketUrl = (clientHost: string) => {
 }
 
 const readPersistedState = (): PersistedDataSyncState => {
+  const defaultConfig = createDefaultDataSyncConfig()
   const fallback = {
-    config: createDefaultDataSyncConfig(),
+    config: defaultConfig,
     revision: 0,
     snapshot: null,
   }
@@ -230,12 +239,16 @@ const readPersistedState = (): PersistedDataSyncState => {
     const parsed = JSON.parse(raw) as Partial<PersistedDataSyncState>
     return {
       config: {
-        ...createDefaultDataSyncConfig(),
+        ...defaultConfig,
         ...(isRecord(parsed.config) ? parsed.config as Partial<DataSyncConfig> : {}),
         serverPort: normalizePort(parsed.config?.serverPort),
+        autoResolveSyncConflicts: typeof parsed.config?.autoResolveSyncConflicts === 'boolean'
+          ? parsed.config.autoResolveSyncConflicts
+          : defaultConfig.autoResolveSyncConflicts,
+        conflictResolutionMode: normalizeConflictResolutionMode(parsed.config?.conflictResolutionMode),
         clientHost: typeof parsed.config?.clientHost === 'string' && parsed.config.clientHost.trim()
           ? parsed.config.clientHost.trim()
-          : createDefaultDataSyncConfig().clientHost,
+          : defaultConfig.clientHost,
         connectionCode: typeof parsed.config?.connectionCode === 'string' ? parsed.config.connectionCode.trim() : '',
       },
       revision: Number.isFinite(parsed.revision) ? Number(parsed.revision) : 0,
@@ -268,6 +281,8 @@ let currentStatus: DataSyncStatus = {
   available: true,
   enabled: false,
   mode: 'server',
+  autoResolveSyncConflicts: false,
+  conflictResolutionMode: 'merge_local_remote',
   serverRunning: false,
   clientConnected: false,
   serverPort: DEFAULT_DATA_SYNC_PORT,
@@ -298,6 +313,8 @@ const notifyStatus = () => {
     ...currentStatus,
     enabled: config.enabled,
     mode: config.mode,
+    autoResolveSyncConflicts: config.autoResolveSyncConflicts,
+    conflictResolutionMode: config.conflictResolutionMode,
     serverRunning: Boolean(httpServer),
     clientConnected: Boolean(clientSocket && clientSocket.readyState === WebSocket.OPEN) || Boolean(lxCompatClient?.isConnected()),
     serverPort: config.serverPort,
@@ -450,6 +467,7 @@ const startServer = async() => {
     getConnectionCode: () => config.connectionCode,
     getCurrentSnapshotData: () => currentSnapshot ? cloneSnapshot(currentSnapshot.data) : null,
     setCurrentSnapshotData: (data, sourceId, sourceName) => setCurrentSnapshot(data, sourceId, sourceName),
+    getDefaultSyncMode: () => config.autoResolveSyncConflicts ? config.conflictResolutionMode : null,
     onDevicesChanged: (devices, trustedDevices) => {
       currentStatus = {
         ...currentStatus,
@@ -634,6 +652,7 @@ const setClientConnectionError = (message: string | null) => {
 const createLxCompatClient = () => new DataSyncLxCompatClient({
   getCurrentSnapshotData: () => currentSnapshot ? cloneSnapshot(currentSnapshot.data) : null,
   setCurrentSnapshotData: (data, sourceId, sourceName) => setCurrentSnapshot(data, sourceId, sourceName),
+  getDefaultSyncMode: () => config.autoResolveSyncConflicts ? config.conflictResolutionMode : null,
   onStatusChanged: () => notifyStatus(),
   onDisconnected: () => {
     if (!disconnectingClient && config.enabled && config.mode === 'client') {
@@ -785,7 +804,7 @@ const connectNativeClient = async(connectionCode: string) => new Promise<void>((
   })
 })
 
-const connectClient = async(connectionCode = config.connectionCode) => {
+const connectClient = async(connectionCode = config.connectionCode, options: { forceCompatCodeAuth?: boolean } = {}) => {
   if (!config.clientHost.trim()) throw new Error('请先填写同步服务地址')
   if (!connectionCode.trim()) throw new Error('请先填写连接码')
 
@@ -806,7 +825,7 @@ const connectClient = async(connectionCode = config.connectionCode) => {
 
     lxCompatClient = createLxCompatClient()
     try {
-      await lxCompatClient.connect(config.clientHost, connectionCode.trim())
+      await lxCompatClient.connect(config.clientHost, connectionCode.trim(), options.forceCompatCodeAuth === true)
       currentStatus = {
         ...currentStatus,
         clientConnected: true,
@@ -848,6 +867,8 @@ export const initializeDataSyncRuntime = async() => {
     ...currentStatus,
     enabled: config.enabled,
     mode: config.mode,
+    autoResolveSyncConflicts: config.autoResolveSyncConflicts,
+    conflictResolutionMode: config.conflictResolutionMode,
     serverRunning: false,
     clientConnected: false,
     serverPort: config.serverPort,
@@ -902,6 +923,10 @@ export const updateDataSyncConfig = async(patch: Partial<DataSyncConfig>) => {
     connectionCode: typeof patch.connectionCode === 'string'
       ? patch.connectionCode.trim()
       : config.connectionCode,
+    autoResolveSyncConflicts: typeof patch.autoResolveSyncConflicts === 'boolean'
+      ? patch.autoResolveSyncConflicts
+      : config.autoResolveSyncConflicts,
+    conflictResolutionMode: normalizeConflictResolutionMode(patch.conflictResolutionMode ?? config.conflictResolutionMode),
     enabled: typeof patch.enabled === 'boolean' ? patch.enabled : config.enabled,
     mode: patch.mode === 'client' ? 'client' : patch.mode === 'server' ? 'server' : config.mode,
   }
@@ -927,7 +952,7 @@ export const updateDataSyncConfig = async(patch: Partial<DataSyncConfig>) => {
   } else {
     await closeServer()
     if (enabledChanged || modeChanged || hostChanged || patch.connectionCode) {
-      await connectClient(config.connectionCode)
+      await connectClient(config.connectionCode, { forceCompatCodeAuth: Boolean(patch.connectionCode) })
     }
   }
 
@@ -970,7 +995,7 @@ export const connectDataSyncClient = async(connectionCode: string) => {
     mode: 'client',
   }
   writePersistedState()
-  await connectClient(connectionCode)
+  await connectClient(connectionCode, { forceCompatCodeAuth: true })
   notifyStatus()
   return getDataSyncStatus()
 }

@@ -104,6 +104,8 @@ class DataSyncService {
     available: false,
     enabled: false,
     mode: 'server',
+    autoResolveSyncConflicts: false,
+    conflictResolutionMode: 'merge_local_remote',
     serverRunning: false,
     clientConnected: false,
     serverPort: createDefaultDataSyncConfig().serverPort,
