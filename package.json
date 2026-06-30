@@ -80,7 +80,7 @@
     "autoprefixer": "^10.4.16",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
-    "electron": "^28.3.3",
+    "electron": "^43.0.0",
     "electron-builder": "^24.9.1",
     "eslint": "^8.55.0",
     "eslint-plugin-react-hooks": "^4.6.0",
