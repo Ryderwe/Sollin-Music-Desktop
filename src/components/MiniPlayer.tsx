@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Disc, Expand, Pause, Pin, PinOff, Play, Settings2, SkipForward, X } from 'lucide-react'
+import { Disc, Expand, Heart, Pause, Pin, PinOff, Play, Settings2, SkipForward, X } from 'lucide-react'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaybackProgressStore } from '@/stores/playbackProgressStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useUserStore } from '@/stores/userStore'
 import { cn } from '@/utils/cn'
 import { findCurrentLyricIndex, parseRichLyrics } from '@/utils/format'
 import CoverImage from '@/components/ui/CoverImage'
@@ -27,6 +28,9 @@ export default function MiniPlayer() {
     togglePlay,
     playNext,
   } = usePlayerStore()
+  const isFavorite = useUserStore((s) => s.isFavorite)
+  const addToFavorites = useUserStore((s) => s.addToFavorites)
+  const removeFromFavorites = useUserStore((s) => s.removeFromFavorites)
   const currentTime = usePlaybackProgressStore((state) => state.currentTime)
   const [platform, setPlatform] = useState<string>('')
   const [showSettings, setShowSettings] = useState(false)
@@ -42,6 +46,7 @@ export default function MiniPlayer() {
   })
 
   const displaySong = currentSong || playlist[0] || null
+  const isSongFavorited = currentSong ? isFavorite(currentSong.id, currentSong.platform) : false
   const isMac = platform === 'darwin'
   const isDarkAppearance = theme === 'system' ? systemPrefersDark : theme === 'dark'
   const cardBackgroundColor = isDarkAppearance
@@ -138,6 +143,17 @@ export default function MiniPlayer() {
     }
   }, [])
 
+  const handleFavoriteClick = () => {
+    if (!currentSong) return
+
+    if (isSongFavorited) {
+      removeFromFavorites(currentSong.id, currentSong.platform)
+      return
+    }
+
+    addToFavorites(currentSong)
+  }
+
   return (
     <div className="relative z-10 h-full overflow-hidden">
       <div
@@ -211,6 +227,14 @@ export default function MiniPlayer() {
                   title="下一首"
                 >
                   <SkipForward className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={handleFavoriteClick}
+                  disabled={!currentSong}
+                  className="btn-icon h-[26px] w-[26px] rounded-full bg-white/68 text-[var(--text-primary)] hover:bg-white dark:bg-white/10 dark:text-[var(--text-primary)] dark:hover:bg-white/15 disabled:opacity-40"
+                  title={isSongFavorited ? '取消收藏' : '收藏'}
+                >
+                  <Heart className={cn('h-3 w-3', isSongFavorited && 'fill-primary-500 text-primary-500')} />
                 </button>
                 <button
                   onClick={toggleMainWindowAlwaysOnTop}
