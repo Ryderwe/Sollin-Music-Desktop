@@ -31,6 +31,7 @@ import { applyDataSyncSnapshotData, buildDataSyncSnapshotData, isDataSyncSnapsho
 import { useFeatureStore } from '@/stores/featureStore'
 import { useDownloadStore } from '@/stores/downloadStore'
 import { useSourceSwitchSettingsStore } from '@/stores/sourceSwitchSettingsStore'
+import { usePlaybackProgressStore } from '@/stores/playbackProgressStore'
 
 // Route-level code splitting
 const Home = lazy(() => import('@/pages/Home'))
@@ -63,7 +64,7 @@ const normalizePreloadSongCount = (value: unknown) => {
 
 function App() {
   const audioRef = useRef<HTMLAudioElement>(null)
-  const { setAudioRef, currentSong, isPlaying } = usePlayerStore()
+  const { setAudioRef, currentSong, isPlaying, audioEffects } = usePlayerStore()
   const initialize = useUserStore((state) => state.initialize)
   const {
     theme,
@@ -112,6 +113,34 @@ function App() {
     }
 
     return 'image/jpeg'
+  }
+
+  const updateMediaSessionPositionState = () => {
+    if (!('mediaSession' in navigator)) return
+
+    const mediaSession = navigator.mediaSession as MediaSession & {
+      setPositionState?: (state?: MediaPositionState) => void
+    }
+    if (typeof mediaSession.setPositionState !== 'function') return
+    if (!currentSong) return
+
+    const { currentTime, duration } = usePlaybackProgressStore.getState()
+    if (!Number.isFinite(duration) || duration <= 0) return
+
+    const position = Math.min(Math.max(Number.isFinite(currentTime) ? currentTime : 0, 0), duration)
+    const playbackRate = Number.isFinite(audioEffects.playbackRate) && audioEffects.playbackRate > 0
+      ? audioEffects.playbackRate
+      : 1
+
+    try {
+      mediaSession.setPositionState({
+        duration,
+        playbackRate,
+        position,
+      })
+    } catch (error) {
+      console.debug('Set media session position failed:', error)
+    }
   }
 
   // Initialize audio, user and analytics
@@ -423,23 +452,49 @@ function App() {
   }, [])
 
   // Media Session API (Hardware Media Keys)
-
-
   useEffect(() => {
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.setActionHandler('play', () => {
-        usePlayerStore.getState().togglePlay()
-      })
-      navigator.mediaSession.setActionHandler('pause', () => {
-        usePlayerStore.getState().togglePlay()
-      })
-      navigator.mediaSession.setActionHandler('previoustrack', () => {
-        usePlayerStore.getState().playPrevious()
-      })
-      navigator.mediaSession.setActionHandler('nexttrack', () => {
-        usePlayerStore.getState().playNext()
-      })
+    if (!('mediaSession' in navigator)) return
+
+    const setActionHandler = (
+      action: MediaSessionAction,
+      handler: MediaSessionActionHandler,
+    ) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler)
+      } catch (error) {
+        console.debug(`Media session action "${action}" is not supported:`, error)
+      }
     }
+
+    setActionHandler('play', () => {
+      const state = usePlayerStore.getState()
+      if (!state.isPlaying) state.togglePlay()
+    })
+    setActionHandler('pause', () => {
+      const state = usePlayerStore.getState()
+      if (state.isPlaying) state.pause()
+    })
+    setActionHandler('previoustrack', () => {
+      usePlayerStore.getState().playPrevious()
+    })
+    setActionHandler('nexttrack', () => {
+      usePlayerStore.getState().playNext()
+    })
+    setActionHandler('seekbackward', (details) => {
+      const currentTime = usePlaybackProgressStore.getState().currentTime
+      const offset = details.seekOffset || 10
+      usePlayerStore.getState().seek(Math.max(0, currentTime - offset))
+    })
+    setActionHandler('seekforward', (details) => {
+      const { currentTime, duration } = usePlaybackProgressStore.getState()
+      const offset = details.seekOffset || 10
+      const nextTime = currentTime + offset
+      usePlayerStore.getState().seek(duration > 0 ? Math.min(duration, nextTime) : nextTime)
+    })
+    setActionHandler('seekto', (details) => {
+      if (typeof details.seekTime !== 'number') return
+      usePlayerStore.getState().seek(details.seekTime)
+    })
   }, [])
 
   // Update Media Session Metadata
@@ -469,9 +524,20 @@ function App() {
         navigator.mediaSession.metadata = null
       }
 
-      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
+      navigator.mediaSession.playbackState = currentSong ? (isPlaying ? 'playing' : 'paused') : 'none'
+      updateMediaSessionPositionState()
     }
-  }, [currentSong, isPlaying])
+  }, [currentSong, isPlaying, audioEffects.playbackRate])
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    if (!currentSong) return
+
+    updateMediaSessionPositionState()
+    return usePlaybackProgressStore.subscribe(() => {
+      updateMediaSessionPositionState()
+    })
+  }, [currentSong, audioEffects.playbackRate])
 
   // Electron tray events
   useEffect(() => {
