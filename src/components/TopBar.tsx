@@ -485,10 +485,10 @@ export default function TopBar() {
   const currentPlatformName = PLATFORM_OPTIONS.find((p) => p.id === searchPlatform)?.name || '全部'
 
   return (
-    <div className="h-14 flex items-center gap-4 px-6 bg-[var(--panel-bg)] border-b border-gray-200/30 dark:border-gray-800/50"
+    <div className="drag-region h-14 flex items-center gap-4 px-6 bg-[var(--panel-bg)] border-b border-gray-200/30 dark:border-gray-800/50"
       style={{ backdropFilter: 'blur(var(--panel-backdrop-blur))' }}>
       {/* Search Box (with platform selector merged inside) */}
-      <form ref={searchFormRef} onSubmit={handleSearch} className="flex-1 max-w-xl relative">
+      <form ref={searchFormRef} onSubmit={handleSearch} className="no-drag flex-1 max-w-xl relative">
         <div
           className={cn(
             'relative flex items-center rounded-full transition-all duration-200',
@@ -647,7 +647,7 @@ export default function TopBar() {
       <div className="flex-1" />
 
       {/* Account Section */}
-      <div className="flex items-center gap-2">
+      <div className="no-drag flex items-center gap-2">
         <VersionStatusButton />
 
         {/* Netease Account */}

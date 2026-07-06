@@ -68,7 +68,7 @@ export default function TitleBar() {
       <div className="h-8 flex items-center justify-between drag-region bg-[var(--panel-bg)] border-b border-gray-200/30 dark:border-gray-800/50"
         style={{ backdropFilter: 'blur(var(--panel-backdrop-blur))' }}>
         {/* App title */}
-        <div className="flex items-center gap-2 px-4 no-drag">
+        <div className="flex items-center gap-2 px-4">
           <div className="w-4 h-4 rounded-full bg-gradient-to-br from-primary-500 to-pink-500" />
           <span className="text-sm font-medium text-[var(--text-secondary)]">Sollin</span>
         </div>
