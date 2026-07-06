@@ -86,9 +86,11 @@ declare global {
       }) => void
       toggleDesktopLyrics: () => void
       getDesktopLyricsStatus: () => Promise<boolean>
+      getDesktopLyricsLockStatus: () => Promise<boolean>
       lockDesktopLyrics: () => void
       unlockDesktopLyrics: () => void
       onDesktopLyricsStatus: (callback: (enabled: boolean) => void) => () => void
+      onDesktopLyricsLockStatus: (callback: (locked: boolean) => void) => () => void
       toggleMenuBarLyrics: () => void
       getMenuBarLyricsStatus: () => Promise<boolean>
       onMenuBarLyricsStatus: (callback: (enabled: boolean) => void) => () => void
@@ -111,6 +113,7 @@ declare global {
       setDesktopLyricsPosition: (x: number, y: number) => void
       setDesktopLyricsIgnoreMouse: (ignore: boolean) => void
       setDesktopLyricsInteractive: (interactive: boolean) => void
+      setDesktopLyricsLockStatus: (locked: boolean) => void
       setDesktopLyricsAlwaysOnTop: (alwaysOnTop: boolean) => void
       setDesktopLyricsHasShadow: (hasShadow: boolean) => void
       getPlayerState: () => Promise<any>

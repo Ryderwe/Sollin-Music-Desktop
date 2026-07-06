@@ -123,6 +123,7 @@ type DesktopLyricsState = {
   enabled?: boolean
   menuBarEnabled?: boolean
   alwaysOnTop?: boolean
+  locked?: boolean
 }
 
 type DesktopLyricsPayload = {
@@ -147,6 +148,7 @@ type DesktopLyricsPayload = {
 type DesktopLyricsPayloadPatch = Partial<DesktopLyricsPayload>
 
 let desktopLyricsAlwaysOnTop = true
+let desktopLyricsLocked = false
 let latestDesktopLyricsPayload: DesktopLyricsPayload = {
   song: null,
   lyricData: null,
@@ -183,6 +185,7 @@ function loadDesktopLyricsState(): DesktopLyricsState {
       enabled: desktopLyricsEnabled,
       menuBarEnabled: menuBarLyricsEnabled,
       alwaysOnTop: desktopLyricsAlwaysOnTop,
+      locked: desktopLyricsLocked,
     }
   }
   desktopLyricsStateLoaded = true
@@ -204,6 +207,9 @@ function loadDesktopLyricsState(): DesktopLyricsState {
         if (typeof parsed?.alwaysOnTop === 'boolean') {
           desktopLyricsAlwaysOnTop = parsed.alwaysOnTop
         }
+        if (typeof parsed?.locked === 'boolean') {
+          desktopLyricsLocked = parsed.locked
+        }
       }
     }
   } catch (error) {
@@ -214,6 +220,7 @@ function loadDesktopLyricsState(): DesktopLyricsState {
     enabled: desktopLyricsEnabled,
     menuBarEnabled: menuBarLyricsEnabled,
     alwaysOnTop: desktopLyricsAlwaysOnTop,
+    locked: desktopLyricsLocked,
   }
 }
 
@@ -224,6 +231,7 @@ function saveDesktopLyricsState() {
     enabled: desktopLyricsEnabled,
     menuBarEnabled: menuBarLyricsEnabled,
     alwaysOnTop: desktopLyricsAlwaysOnTop,
+    locked: desktopLyricsLocked,
   }
   fs.promises.writeFile(statePath, JSON.stringify(state)).catch((error) => {
     console.warn('Save desktop lyrics state failed:', error)
@@ -3019,6 +3027,12 @@ function sendDesktopLyricsStatus(enabled: boolean) {
   mainWindow?.webContents.send('desktop-lyrics:status', enabled)
 }
 
+function sendDesktopLyricsLockStatus(locked: boolean) {
+  desktopLyricsLocked = locked
+  saveDesktopLyricsState()
+  mainWindow?.webContents.send('desktop-lyrics:lock-status', locked)
+}
+
 function sendMenuBarLyricsStatus(enabled: boolean) {
   menuBarLyricsEnabled = enabled
   saveDesktopLyricsState()
@@ -3565,6 +3579,7 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('desktop-lyrics:status', () => desktopLyricsEnabled)
+  ipcMain.handle('desktop-lyrics:lock-status', () => desktopLyricsLocked)
 
   ipcMain.on('desktop-lyrics:lock', () => {
     if (!desktopLyricsWindow || desktopLyricsWindow.isDestroyed()) return
@@ -3572,6 +3587,7 @@ function setupIpcHandlers() {
       desktopLyricsWindow.showInactive()
       sendDesktopLyricsStatus(true)
     }
+    sendDesktopLyricsLockStatus(true)
     desktopLyricsWindow.webContents.send('desktop-lyrics:lock')
   })
 
@@ -3581,6 +3597,7 @@ function setupIpcHandlers() {
       desktopLyricsWindow.showInactive()
       sendDesktopLyricsStatus(true)
     }
+    sendDesktopLyricsLockStatus(false)
     desktopLyricsWindow.webContents.send('desktop-lyrics:unlock')
   })
 
@@ -3612,6 +3629,10 @@ function setupIpcHandlers() {
     if (!desktopLyricsWindow || desktopLyricsWindow.isDestroyed()) return
     desktopLyricsWindow.setIgnoreMouseEvents(ignore, { forward: true })
     setDesktopLyricsInteractive(!ignore)
+  })
+
+  ipcMain.on('desktop-lyrics:set-lock-status', (_event, locked: boolean) => {
+    sendDesktopLyricsLockStatus(Boolean(locked))
   })
 
   ipcMain.on('desktop-lyrics:set-interactive', (_event, interactive: boolean) => {

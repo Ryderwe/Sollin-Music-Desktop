@@ -216,12 +216,18 @@ const electronAPI = {
   syncDesktopLyrics: (payload: DesktopLyricsPayloadPatch) => ipcRenderer.send('desktop-lyrics:sync-state', payload),
   toggleDesktopLyrics: () => ipcRenderer.send('desktop-lyrics:toggle'),
   getDesktopLyricsStatus: () => ipcRenderer.invoke('desktop-lyrics:status'),
+  getDesktopLyricsLockStatus: () => ipcRenderer.invoke('desktop-lyrics:lock-status'),
   lockDesktopLyrics: () => ipcRenderer.send('desktop-lyrics:lock'),
   unlockDesktopLyrics: () => ipcRenderer.send('desktop-lyrics:unlock'),
   onDesktopLyricsStatus: (callback: (enabled: boolean) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, enabled: boolean) => callback(enabled)
     ipcRenderer.on('desktop-lyrics:status', handler)
     return () => ipcRenderer.removeListener('desktop-lyrics:status', handler)
+  },
+  onDesktopLyricsLockStatus: (callback: (locked: boolean) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, locked: boolean) => callback(locked)
+    ipcRenderer.on('desktop-lyrics:lock-status', handler)
+    return () => ipcRenderer.removeListener('desktop-lyrics:lock-status', handler)
   },
   toggleMenuBarLyrics: () => ipcRenderer.send('menu-bar-lyrics:toggle'),
   getMenuBarLyricsStatus: () => ipcRenderer.invoke('menu-bar-lyrics:status'),
@@ -253,6 +259,7 @@ const electronAPI = {
   setDesktopLyricsPosition: (x: number, y: number) => ipcRenderer.send('desktop-lyrics:set-position', { x, y }),
   setDesktopLyricsIgnoreMouse: (ignore: boolean) => ipcRenderer.send('desktop-lyrics:set-ignore-mouse', ignore),
   setDesktopLyricsInteractive: (interactive: boolean) => ipcRenderer.send('desktop-lyrics:set-interactive', interactive),
+  setDesktopLyricsLockStatus: (locked: boolean) => ipcRenderer.send('desktop-lyrics:set-lock-status', locked),
   setDesktopLyricsAlwaysOnTop: (alwaysOnTop: boolean) => ipcRenderer.send('desktop-lyrics:set-always-on-top', alwaysOnTop),
   setDesktopLyricsHasShadow: (hasShadow: boolean) => ipcRenderer.send('desktop-lyrics:set-has-shadow', hasShadow),
 
@@ -361,9 +368,11 @@ declare global {
       syncDesktopLyrics: (payload: DesktopLyricsPayloadPatch) => void
       toggleDesktopLyrics: () => void
       getDesktopLyricsStatus: () => Promise<boolean>
+      getDesktopLyricsLockStatus: () => Promise<boolean>
       lockDesktopLyrics: () => void
       unlockDesktopLyrics: () => void
       onDesktopLyricsStatus: (callback: (enabled: boolean) => void) => () => void
+      onDesktopLyricsLockStatus: (callback: (locked: boolean) => void) => () => void
       toggleMenuBarLyrics: () => void
       getMenuBarLyricsStatus: () => Promise<boolean>
       onMenuBarLyricsStatus: (callback: (enabled: boolean) => void) => () => void
@@ -374,6 +383,7 @@ declare global {
       setDesktopLyricsPosition: (x: number, y: number) => void
       setDesktopLyricsIgnoreMouse: (ignore: boolean) => void
       setDesktopLyricsInteractive: (interactive: boolean) => void
+      setDesktopLyricsLockStatus: (locked: boolean) => void
       setDesktopLyricsAlwaysOnTop: (alwaysOnTop: boolean) => void
       setDesktopLyricsHasShadow: (hasShadow: boolean) => void
       getPlayerState: () => Promise<unknown>

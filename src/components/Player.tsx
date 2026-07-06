@@ -87,6 +87,7 @@ export default function Player() {
   const [intelligenceLoading, setIntelligenceLoading] = useState(false)
   const [isIntelligenceMode, setIsIntelligenceMode] = useState(false)
   const [desktopLyricsEnabled, setDesktopLyricsEnabled] = useState(false)
+  const [desktopLyricsLocked, setDesktopLyricsLocked] = useState(false)
   const [menuBarLyricsEnabled, setMenuBarLyricsEnabled] = useState(false)
   const [platform, setPlatform] = useState<string>('')
   const [systemPrefersDark, setSystemPrefersDark] = useState(() => {
@@ -121,10 +122,14 @@ export default function Player() {
 
     window.electronAPI.getPlatform().then(setPlatform)
     window.electronAPI.getDesktopLyricsStatus().then(setDesktopLyricsEnabled)
+    window.electronAPI.getDesktopLyricsLockStatus?.().then(setDesktopLyricsLocked)
     window.electronAPI.getMenuBarLyricsStatus?.().then(setMenuBarLyricsEnabled)
 
     const unsubscribeDesktopLyrics = window.electronAPI.onDesktopLyricsStatus((enabled) => {
       setDesktopLyricsEnabled(enabled)
+    })
+    const unsubscribeDesktopLyricsLock = window.electronAPI.onDesktopLyricsLockStatus?.((locked) => {
+      setDesktopLyricsLocked(locked)
     })
     const unsubscribeMenuBarLyrics = window.electronAPI.onMenuBarLyricsStatus?.((enabled) => {
       setMenuBarLyricsEnabled(enabled)
@@ -132,6 +137,7 @@ export default function Player() {
 
     return () => {
       unsubscribeDesktopLyrics()
+      unsubscribeDesktopLyricsLock?.()
       unsubscribeMenuBarLyrics?.()
     }
   }, [])
@@ -915,26 +921,25 @@ export default function Player() {
                       </span>
                     </DropdownMenu.Item>
                     <DropdownMenu.Item
-                      className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 outline-none disabled:cursor-not-allowed disabled:opacity-50',
+                        desktopLyricsLocked && 'text-primary-500'
+                      )}
                       disabled={!desktopLyricsEnabled}
                       onSelect={() => {
-                        window.electronAPI?.lockDesktopLyrics()
-                        addToast({ type: 'success', message: '已锁定桌面歌词' })
+                        const nextLocked = !desktopLyricsLocked
+                        setDesktopLyricsLocked(nextLocked)
+                        if (nextLocked) {
+                          window.electronAPI?.lockDesktopLyrics()
+                          addToast({ type: 'success', message: '已锁定桌面歌词' })
+                        } else {
+                          window.electronAPI?.unlockDesktopLyrics()
+                          addToast({ type: 'success', message: '已解锁桌面歌词' })
+                        }
                       }}
                     >
-                      <Lock className="w-4 h-4" />
-                      锁定桌面歌词
-                    </DropdownMenu.Item>
-                    <DropdownMenu.Item
-                      className="flex items-center gap-3 px-3 py-2 text-sm rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={!desktopLyricsEnabled}
-                      onSelect={() => {
-                        window.electronAPI?.unlockDesktopLyrics()
-                        addToast({ type: 'success', message: '已解锁桌面歌词' })
-                      }}
-                    >
-                      <Unlock className="w-4 h-4" />
-                      解锁桌面歌词
+                      {desktopLyricsLocked ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                      {desktopLyricsLocked ? '解锁桌面歌词' : '锁定桌面歌词'}
                     </DropdownMenu.Item>
                   </>
                 )}

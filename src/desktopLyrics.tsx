@@ -187,7 +187,7 @@ const LyricRow = memo(function LyricRow({ line, chunks, position, settings }: Ly
         <div
           className="dl-translation"
           style={{
-            fontSize: `${Math.max(12, settings.fontSize * 0.55)}px`,
+            fontSize: `${Math.max(8, settings.fontSize * 0.55)}px`,
             color: hexToRgba(settings.unplayColor, isCurrent ? 0.78 : 0.5),
             textAlign: settings.align,
           }}
@@ -203,13 +203,13 @@ function DesktopLyricsApp() {
   const [settings, setSettings] = useState<DesktopLyricsSettings>(() => loadSettings())
   const [payload, setPayload] = useState<DesktopLyricsPayload>(defaultPayload)
   const [displayTime, setDisplayTime] = useState(0)
-  const [lockedToolbarActive, setLockedToolbarActive] = useState(false)
   const timingRef = useRef({ currentTime: 0, isPlaying: false, syncedAt: performance.now() })
 
   // Persist settings + push runtime flags to the main process.
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
     window.electronAPI?.setDesktopLyricsAlwaysOnTop?.(settings.alwaysOnTop)
+    window.electronAPI?.setDesktopLyricsLockStatus?.(settings.lock)
   }, [settings])
 
   // On mount: window starts unlocked-interactive.
@@ -221,30 +221,10 @@ function DesktopLyricsApp() {
   // Click-through behavior follows lock state.
   useEffect(() => {
     if (!settings.lock) {
-      setLockedToolbarActive(false)
       window.electronAPI?.setDesktopLyricsIgnoreMouse?.(false)
       return
     }
-    window.electronAPI?.setDesktopLyricsIgnoreMouse?.(!lockedToolbarActive)
-  }, [settings.lock, lockedToolbarActive])
-
-  // Locked: top-left hotspot reveals minimal toolbar.
-  useEffect(() => {
-    if (!settings.lock) return
-    const HOTSPOT_W = 140
-    const HOTSPOT_H = 48
-    const onMove = (event: MouseEvent) => {
-      const inside = event.clientX >= 0 && event.clientY >= 0
-        && event.clientX <= HOTSPOT_W && event.clientY <= HOTSPOT_H
-      setLockedToolbarActive((prev) => prev === inside ? prev : inside)
-    }
-    const onLeave = () => setLockedToolbarActive(false)
-    window.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseleave', onLeave)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseleave', onLeave)
-    }
+    window.electronAPI?.setDesktopLyricsIgnoreMouse?.(true)
   }, [settings.lock])
 
   // Receive sync payload from main window.
@@ -257,7 +237,6 @@ function DesktopLyricsApp() {
   useEffect(() => {
     if (!window.electronAPI?.onDesktopLyricsLock) return
     return window.electronAPI.onDesktopLyricsLock(() => {
-      setLockedToolbarActive(false)
       setSettings((prev) => ({ ...prev, lock: true }))
     })
   }, [])
@@ -265,7 +244,6 @@ function DesktopLyricsApp() {
   useEffect(() => {
     if (!window.electronAPI?.onDesktopLyricsUnlock) return
     return window.electronAPI.onDesktopLyricsUnlock(() => {
-      setLockedToolbarActive(false)
       setSettings((prev) => ({ ...prev, lock: false }))
     })
   }, [])
@@ -395,7 +373,6 @@ function DesktopLyricsApp() {
           pointer-events: auto;
         }
         .dl-shell.locked .dl-toolbar { opacity: 0; pointer-events: none; }
-        .dl-shell.locked.toolbar-active .dl-toolbar { opacity: 1; pointer-events: auto; }
 
         .dl-btn {
           height: 26px; padding: 0 10px;
@@ -490,9 +467,8 @@ function DesktopLyricsApp() {
       `}</style>
 
       <div
-        className={`dl-shell ${settings.lock ? 'locked' : 'unlocked'}${lockedToolbarActive ? ' toolbar-active' : ''}`}
+        className={`dl-shell ${settings.lock ? 'locked' : 'unlocked'}`}
         style={shellStyle}
-        onDoubleClick={() => setSettings((p) => ({ ...p, lock: !p.lock }))}
       >
         <Toolbar settings={settings} setSettings={setSettings} />
 
@@ -543,13 +519,6 @@ function Toolbar({ settings, setSettings }: ToolbarProps) {
       >
         ×
       </button>
-      <button
-        className={`dl-btn${settings.lock ? ' active' : ''}`}
-        title={settings.lock ? '解锁窗口' : '锁定窗口'}
-        onClick={() => toggle('lock')}
-      >
-        {settings.lock ? '已锁' : '可拖'}
-      </button>
       {!settings.lock ? (
         <>
           <button
@@ -558,7 +527,7 @@ function Toolbar({ settings, setSettings }: ToolbarProps) {
           >
             置顶
           </button>
-          <button className="dl-btn" onClick={() => update('fontSize', Math.max(16, settings.fontSize - 2))}>A-</button>
+          <button className="dl-btn" onClick={() => update('fontSize', Math.max(10, settings.fontSize - 2))}>A-</button>
           <button className="dl-btn" onClick={() => update('fontSize', Math.min(48, settings.fontSize + 2))}>A+</button>
           <button
             className={`dl-btn${settings.showTranslation ? ' active' : ''}`}
