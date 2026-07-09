@@ -485,6 +485,7 @@ Confirm that `VITE_GITHUB_REPO` points to a public repository and that the repos
 Sollin is an independent project, but it benefits from the ideas and ecosystem built by these open-source projects:
 
 - [LX Music Desktop](https://github.com/lyswhut/lx-music-desktop): reference and inspiration for desktop music player behavior, local data workflows, sync concepts and the LX source script ecosystem.
+- [Mineradio](https://github.com/XxHuberrr/Mineradio.git): source and reference for the ported Mineradio playback visual engine, stage lyrics and motion effects.
 - [Apple Music-like Lyrics](https://github.com/amll-dev/applemusic-like-lyrics): lyric rendering libraries used for Apple Music-like lyric experiences.
 - Electron, React, Vite, TypeScript, Tailwind CSS and the broader open-source ecosystem.
 

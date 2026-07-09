@@ -484,6 +484,7 @@ VITE_DEV_SERVER_PORT=5174 npm run electron:dev
 Sollin 是独立项目，但它受益于以下开源项目的思路和生态：
 
 - [LX Music Desktop](https://github.com/lyswhut/lx-music-desktop)：桌面音乐播放器行为、本地数据流程、同步概念和 LX 音源脚本生态的重要参考。
+- [Mineradio](https://github.com/XxHuberrr/Mineradio.git)：Mineradio 播放界面视觉引擎、舞台歌词和动效体验的移植来源与重要参考。
 - [Apple Music-like Lyrics](https://github.com/amll-dev/applemusic-like-lyrics)：用于实现 Apple Music 风格歌词体验的歌词渲染库。
 - Electron、React、Vite、TypeScript、Tailwind CSS 以及更广泛的开源生态。
 
