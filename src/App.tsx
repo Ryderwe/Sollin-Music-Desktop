@@ -95,6 +95,12 @@ function App() {
   const handledLxSourceAlertsRef = useRef<Set<string>>(new Set())
   const isApplyingRemoteSnapshotRef = useRef(false)
   const pushSnapshotTimerRef = useRef<number | null>(null)
+  const lastMediaPositionRef = useRef<{
+    position: number
+    duration: number
+    playbackRate: number
+    reportedAt: number
+  } | null>(null)
 
   const inferArtworkMimeType = (value?: string) => {
     if (!value) return 'image/jpeg'
@@ -138,6 +144,7 @@ function App() {
         playbackRate,
         position,
       })
+      lastMediaPositionRef.current = { position, duration, playbackRate, reportedAt: performance.now() }
     } catch (error) {
       console.debug('Set media session position failed:', error)
     }
@@ -534,8 +541,25 @@ function App() {
     if (!currentSong) return
 
     updateMediaSessionPositionState()
-    return usePlaybackProgressStore.subscribe(() => {
-      updateMediaSessionPositionState()
+    // The OS extrapolates the position from the last reported state, so only
+    // re-report when actual progress diverges from that extrapolation (seeks)
+    // or the duration changes — not on every progress tick.
+    return usePlaybackProgressStore.subscribe((state) => {
+      const last = lastMediaPositionRef.current
+      if (!last) {
+        updateMediaSessionPositionState()
+        return
+      }
+      const playing = usePlayerStore.getState().isPlaying
+      const expected = playing
+        ? last.position + ((performance.now() - last.reportedAt) / 1000) * last.playbackRate
+        : last.position
+      if (
+        Math.abs(state.currentTime - expected) > 1 ||
+        Math.abs(state.duration - last.duration) > 0.5
+      ) {
+        updateMediaSessionPositionState()
+      }
     })
   }, [currentSong, audioEffects.playbackRate])
 

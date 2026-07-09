@@ -440,13 +440,20 @@ export const getAudioAnalyser = () => {
   return passiveAnalyserNodes?.analyser || null
 }
 
+// Scratch buffer reused across reads; visualizers call this every frame.
+let analyserScratchBuffer = new Uint8Array(0)
+
 export const readAudioAnalyserData = (target: Uint8Array) => {
   const analyser = getAudioAnalyser()
   if (!analyser) {
     target.fill(0)
     return target
   }
-  const temp = new Uint8Array(Math.max(target.length, analyser.frequencyBinCount))
+  const needed = Math.max(target.length, analyser.frequencyBinCount)
+  if (analyserScratchBuffer.length < needed) {
+    analyserScratchBuffer = new Uint8Array(needed)
+  }
+  const temp = analyserScratchBuffer.subarray(0, needed)
   analyser.getByteFrequencyData(temp)
   target.set(temp.subarray(0, target.length))
   return target

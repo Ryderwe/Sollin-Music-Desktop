@@ -246,6 +246,16 @@ const electronAPI = {
     ipcRenderer.on('desktop-lyrics:state', handler)
     return () => ipcRenderer.removeListener('desktop-lyrics:state', handler)
   },
+  onDesktopLyricsTiming: (callback: (patch: { currentTime: number; isPlaying: boolean }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, patch: { currentTime: number; isPlaying: boolean }) => callback(patch)
+    ipcRenderer.on('desktop-lyrics:timing', handler)
+    return () => ipcRenderer.removeListener('desktop-lyrics:timing', handler)
+  },
+  onDesktopLyricsVisibility: (callback: (visible: boolean) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, visible: boolean) => callback(visible)
+    ipcRenderer.on('desktop-lyrics:visibility', handler)
+    return () => ipcRenderer.removeListener('desktop-lyrics:visibility', handler)
+  },
   onDesktopLyricsLock: (callback: () => void) => {
     const handler = () => callback()
     ipcRenderer.on('desktop-lyrics:lock', handler)

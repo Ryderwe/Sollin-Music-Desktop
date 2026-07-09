@@ -11,23 +11,19 @@ import CoverImage from '@/components/ui/CoverImage'
 const MINI_PLAYER_CARD_OPACITY_KEY = 'mini-player-card-opacity'
 
 export default function MiniPlayer() {
-  const {
-    setMiniMode,
-    mainWindowAlwaysOnTop,
-    toggleMainWindowAlwaysOnTop,
-    theme,
-  } = useUIStore()
-  const {
-    currentSong,
-    playlist,
-    isPlaying,
-    isLoading,
-    lyricData,
-    lyrics,
-    playbackSessionKey,
-    togglePlay,
-    playNext,
-  } = usePlayerStore()
+  const setMiniMode = useUIStore((s) => s.setMiniMode)
+  const mainWindowAlwaysOnTop = useUIStore((s) => s.mainWindowAlwaysOnTop)
+  const toggleMainWindowAlwaysOnTop = useUIStore((s) => s.toggleMainWindowAlwaysOnTop)
+  const theme = useUIStore((s) => s.theme)
+  const currentSong = usePlayerStore((s) => s.currentSong)
+  const playlist = usePlayerStore((s) => s.playlist)
+  const isPlaying = usePlayerStore((s) => s.isPlaying)
+  const isLoading = usePlayerStore((s) => s.isLoading)
+  const lyricData = usePlayerStore((s) => s.lyricData)
+  const lyrics = usePlayerStore((s) => s.lyrics)
+  const playbackSessionKey = usePlayerStore((s) => s.playbackSessionKey)
+  const togglePlay = usePlayerStore((s) => s.togglePlay)
+  const playNext = usePlayerStore((s) => s.playNext)
   const isFavorite = useUserStore((s) => s.isFavorite)
   const addToFavorites = useUserStore((s) => s.addToFavorites)
   const removeFromFavorites = useUserStore((s) => s.removeFromFavorites)

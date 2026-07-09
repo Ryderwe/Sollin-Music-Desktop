@@ -108,6 +108,8 @@ declare global {
         currentTime: number
         isPlaying: boolean
       }) => void) => () => void
+      onDesktopLyricsTiming: (callback: (patch: { currentTime: number; isPlaying: boolean }) => void) => () => void
+      onDesktopLyricsVisibility: (callback: (visible: boolean) => void) => () => void
       onDesktopLyricsLock: (callback: () => void) => () => void
       onDesktopLyricsUnlock: (callback: () => void) => () => void
       setDesktopLyricsPosition: (x: number, y: number) => void

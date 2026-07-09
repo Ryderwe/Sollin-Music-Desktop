@@ -34,10 +34,12 @@ export default memo(function AudioVisualizer({
     }
 
     let frameId = 0
-    let analyserData = new Uint8Array(128)
+    let timeoutId = 0
+    const analyserData = new Uint8Array(128)
 
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1
+      // The bar meter doesn't need full retina resolution; cap DPR to save fill rate.
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5)
       const width = canvas.clientWidth
       const height = canvas.clientHeight
       canvas.width = Math.max(1, Math.floor(width * dpr))
@@ -45,17 +47,22 @@ export default memo(function AudioVisualizer({
       context.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
 
+    // ~30fps is plenty for the bar meter; rAF alone would run at display refresh.
+    const scheduleNext = (delay: number) => {
+      timeoutId = window.setTimeout(() => {
+        frameId = window.requestAnimationFrame(render)
+      }, delay)
+    }
+
     const render = () => {
       const width = canvas.clientWidth
       const height = canvas.clientHeight
       if (width === 0 || height === 0) {
-        frameId = window.requestAnimationFrame(render)
+        // Zero-sized layout: poll slowly instead of spinning at full frame rate.
+        scheduleNext(250)
         return
       }
 
-      if (analyserData.length !== 128) {
-        analyserData = new Uint8Array(128)
-      }
       readAudioAnalyserData(analyserData)
 
       context.clearRect(0, 0, width, height)
@@ -87,7 +94,7 @@ export default memo(function AudioVisualizer({
 
       context.globalAlpha = 1
 
-      frameId = window.requestAnimationFrame(render)
+      scheduleNext(33)
     }
 
     resize()
@@ -95,6 +102,7 @@ export default memo(function AudioVisualizer({
     window.addEventListener('resize', resize)
     return () => {
       window.cancelAnimationFrame(frameId)
+      window.clearTimeout(timeoutId)
       window.removeEventListener('resize', resize)
     }
   }, [barColor, glowColor, barCount, isPlaying])

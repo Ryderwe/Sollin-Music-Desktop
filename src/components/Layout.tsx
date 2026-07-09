@@ -383,13 +383,19 @@ export default function Layout() {
             applyMiniWindowFallback()
           }
 
+          let lastPersistedFrame = ''
           persistTimer = window.setInterval(() => {
-            writeStoredMiniFrame({
+            const frame = {
               x: window.screenX,
               y: window.screenY,
               width: window.outerWidth,
               height: window.outerHeight,
-            })
+            }
+            // Only touch localStorage when the window actually moved/resized.
+            const serialized = `${frame.x},${frame.y},${frame.width},${frame.height}`
+            if (serialized === lastPersistedFrame) return
+            lastPersistedFrame = serialized
+            writeStoredMiniFrame(frame)
           }, 400)
           return
         }

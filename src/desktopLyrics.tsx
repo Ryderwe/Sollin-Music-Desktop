@@ -203,6 +203,7 @@ function DesktopLyricsApp() {
   const [settings, setSettings] = useState<DesktopLyricsSettings>(() => loadSettings())
   const [payload, setPayload] = useState<DesktopLyricsPayload>(defaultPayload)
   const [displayTime, setDisplayTime] = useState(0)
+  const [windowVisible, setWindowVisible] = useState(true)
   const timingRef = useRef({ currentTime: 0, isPlaying: false, syncedAt: performance.now() })
 
   // Persist settings + push runtime flags to the main process.
@@ -233,6 +234,22 @@ function DesktopLyricsApp() {
     return window.electronAPI.onDesktopLyricsState((next) => setPayload(next))
   }, [])
 
+  // Lightweight progress ticks (~4x/s) arrive on a separate channel so the
+  // full payload (song + lyrics text) isn't re-sent for every tick.
+  useEffect(() => {
+    if (!window.electronAPI?.onDesktopLyricsTiming) return
+    return window.electronAPI.onDesktopLyricsTiming((patch) => {
+      setPayload((prev) => ({ ...prev, currentTime: patch.currentTime, isPlaying: patch.isPlaying }))
+    })
+  }, [])
+
+  // The window keeps backgroundThrottling off (transparent always-on-top
+  // windows misreport occlusion), so pause the clock ourselves when hidden.
+  useEffect(() => {
+    if (!window.electronAPI?.onDesktopLyricsVisibility) return
+    return window.electronAPI.onDesktopLyricsVisibility((visible) => setWindowVisible(visible))
+  }, [])
+
   // Allow the main window menu to control the click-through lock state.
   useEffect(() => {
     if (!window.electronAPI?.onDesktopLyricsLock) return
@@ -259,7 +276,10 @@ function DesktopLyricsApp() {
   }, [payload.currentTime, payload.isPlaying, payload.song?.id, payload.lyricData, payload.lyrics])
 
   // rAF clock to interpolate currentTime smoothly.
+  // Only runs while playing and visible; otherwise the sync effect above
+  // already snapped displayTime to the last reported position.
   useEffect(() => {
+    if (!payload.isPlaying || !windowVisible) return
     let rafId = 0
     const tick = () => {
       const t = timingRef.current
@@ -271,7 +291,7 @@ function DesktopLyricsApp() {
     }
     rafId = window.requestAnimationFrame(tick)
     return () => window.cancelAnimationFrame(rafId)
-  }, [])
+  }, [payload.isPlaying, windowVisible])
 
   const lyricSource = useMemo<LyricData | null>(() => {
     if (payload.lyricData) return payload.lyricData

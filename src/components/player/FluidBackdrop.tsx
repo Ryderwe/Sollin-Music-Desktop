@@ -276,7 +276,10 @@ export default memo(function FluidBackdrop({
       const height = canvas.clientHeight
 
       if (width === 0 || height === 0) {
-        frameId = window.requestAnimationFrame(render)
+        // Zero-sized layout: retry slowly instead of spinning at display refresh rate.
+        timerId = window.setTimeout(() => {
+          frameId = window.requestAnimationFrame(render)
+        }, 250)
         return
       }
 

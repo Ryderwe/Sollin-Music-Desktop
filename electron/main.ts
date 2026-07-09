@@ -224,7 +224,9 @@ function loadDesktopLyricsState(): DesktopLyricsState {
   }
 }
 
-function saveDesktopLyricsState() {
+let saveDesktopLyricsStateTimer: NodeJS.Timeout | null = null
+
+function writeDesktopLyricsStateNow(sync = false) {
   const statePath = getDesktopLyricsStatePath()
   const state: DesktopLyricsState = {
     bounds: desktopLyricsBounds || undefined,
@@ -233,9 +235,34 @@ function saveDesktopLyricsState() {
     alwaysOnTop: desktopLyricsAlwaysOnTop,
     locked: desktopLyricsLocked,
   }
+  if (sync) {
+    try {
+      fs.writeFileSync(statePath, JSON.stringify(state))
+    } catch (error) {
+      console.warn('Save desktop lyrics state failed:', error)
+    }
+    return
+  }
   fs.promises.writeFile(statePath, JSON.stringify(state)).catch((error) => {
     console.warn('Save desktop lyrics state failed:', error)
   })
+}
+
+// Window drag/resize emits move events per frame; coalesce disk writes.
+function saveDesktopLyricsState() {
+  if (saveDesktopLyricsStateTimer) return
+  saveDesktopLyricsStateTimer = setTimeout(() => {
+    saveDesktopLyricsStateTimer = null
+    writeDesktopLyricsStateNow()
+  }, 500)
+}
+
+function flushDesktopLyricsState() {
+  if (saveDesktopLyricsStateTimer) {
+    clearTimeout(saveDesktopLyricsStateTimer)
+    saveDesktopLyricsStateTimer = null
+  }
+  writeDesktopLyricsStateNow(true)
 }
 
 type PersistedPlayerState = {
@@ -2800,7 +2827,10 @@ function createWindow() {
       contextIsolation: true,
       webSecurity: false, // Allow loading local resources
       allowRunningInsecureContent: true,
-      backgroundThrottling: false,
+      // Let Chromium throttle rAF/timers when the window is hidden or occluded.
+      // Audio playback keeps the page audible, which exempts media/timer events
+      // from throttling, so playback and desktop-lyrics sync are unaffected.
+      backgroundThrottling: true,
     },
     show: false,
   })
@@ -3150,8 +3180,21 @@ function createDesktopLyricsWindow() {
     sendDesktopLyricsStatus(true)
   })
 
-  desktopLyricsWindow.on('show', () => sendDesktopLyricsStatus(true))
-  desktopLyricsWindow.on('hide', () => sendDesktopLyricsStatus(false))
+  desktopLyricsWindow.on('show', () => {
+    sendDesktopLyricsStatus(true)
+    // The lyrics renderer keeps backgroundThrottling off, so tell it explicitly
+    // when it is visible; it pauses its animation clock while hidden.
+    if (desktopLyricsWindow && !desktopLyricsWindow.isDestroyed()) {
+      desktopLyricsWindow.webContents.send('desktop-lyrics:visibility', true)
+      desktopLyricsWindow.webContents.send('desktop-lyrics:state', latestDesktopLyricsPayload)
+    }
+  })
+  desktopLyricsWindow.on('hide', () => {
+    sendDesktopLyricsStatus(false)
+    if (desktopLyricsWindow && !desktopLyricsWindow.isDestroyed()) {
+      desktopLyricsWindow.webContents.send('desktop-lyrics:visibility', false)
+    }
+  })
   desktopLyricsWindow.on('blur', () => {
     if (!desktopLyricsWindow || desktopLyricsWindow.isDestroyed()) return
     if (desktopLyricsWindow.isVisible()) {
@@ -3612,8 +3655,18 @@ function setupIpcHandlers() {
       ...latestDesktopLyricsPayload,
       ...payload,
     }
-    if (desktopLyricsWindow && !desktopLyricsWindow.isDestroyed()) {
-      desktopLyricsWindow.webContents.send('desktop-lyrics:state', latestDesktopLyricsPayload)
+    const win = desktopLyricsWindow
+    if (!win || win.isDestroyed() || !win.isVisible()) return
+    const keys = Object.keys(payload)
+    const timingOnly = keys.length > 0 && keys.every((key) => key === 'currentTime' || key === 'isPlaying')
+    if (timingOnly) {
+      // Progress ticks arrive ~4x/s; don't re-send the song + full lyrics text each time.
+      win.webContents.send('desktop-lyrics:timing', {
+        currentTime: latestDesktopLyricsPayload.currentTime,
+        isPlaying: latestDesktopLyricsPayload.isPlaying,
+      })
+    } else {
+      win.webContents.send('desktop-lyrics:state', latestDesktopLyricsPayload)
     }
   })
 
@@ -3865,7 +3918,7 @@ app.on('before-quit', () => {
   void disposeLxSourceRuntime()
   void disposeDataSyncRuntime()
   // Persist the current enabled state one last time.
-  saveDesktopLyricsState()
+  flushDesktopLyricsState()
 })
 
 app.on('window-all-closed', () => {

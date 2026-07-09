@@ -28,6 +28,7 @@ import * as Slider from '@radix-ui/react-slider'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaybackProgressStore } from '@/stores/playbackProgressStore'
+import { useSleepTimerCountdownStore } from '@/stores/sleepTimerStore'
 import { useUserStore } from '@/stores/userStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -67,7 +68,7 @@ export default function Player() {
   const lyrics = usePlayerStore((s) => s.lyrics)
   const audioEffects = usePlayerStore((s) => s.audioEffects)
   const sleepTimerMode = usePlayerStore((s) => s.sleepTimerMode)
-  const sleepTimerRemainingSeconds = usePlayerStore((s) => s.sleepTimerRemainingSeconds)
+  const sleepTimerRemainingSeconds = useSleepTimerCountdownStore((s) => s.remainingSeconds)
 
   const isFavorite = useUserStore((s) => s.isFavorite)
   const addToFavorites = useUserStore((s) => s.addToFavorites)

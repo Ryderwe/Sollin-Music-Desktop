@@ -96,15 +96,23 @@ export default function TtmlLyricPlayer({
     const startTime = currentTime
     const startedAt = performance.now()
     let frameId = 0
+    let timeoutId = 0
 
     const tick = () => {
       const elapsed = (performance.now() - startedAt) / 1000
       setDisplayTime(startTime + elapsed * playbackRate)
-      frameId = window.requestAnimationFrame(tick)
+      // Every update re-renders the whole line list, so cap ticks at ~30fps
+      // instead of the display refresh rate.
+      timeoutId = window.setTimeout(() => {
+        frameId = window.requestAnimationFrame(tick)
+      }, 33)
     }
 
     frameId = window.requestAnimationFrame(tick)
-    return () => window.cancelAnimationFrame(frameId)
+    return () => {
+      window.cancelAnimationFrame(frameId)
+      window.clearTimeout(timeoutId)
+    }
   }, [currentTime, isPlaying, playbackRate])
 
   useEffect(() => {

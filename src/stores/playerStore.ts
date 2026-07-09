@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import type { PersistStorage } from 'zustand/middleware'
 import type { Song, PlayMode, AudioQuality, Platform, SongPlatform, LyricData, AudioEffectsState } from '@/types'
 import { QUALITY_NAMES } from '@/constants/audio'
 import api from '@/services/api'
@@ -9,6 +10,7 @@ import { toggleSourceRegistry } from '@/services/toggleSourceRegistry'
 import { songRegistry } from '@/services/songRegistry'
 import { useSourceSwitchSettingsStore } from '@/stores/sourceSwitchSettingsStore'
 import { usePlaybackProgressStore } from '@/stores/playbackProgressStore'
+import { useSleepTimerCountdownStore } from '@/stores/sleepTimerStore'
 import { useUserStore } from '@/stores/userStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useFeatureStore } from '@/stores/featureStore'
@@ -34,28 +36,35 @@ async function safePlayerStorageGet(name: string): Promise<string | null> {
   }
 }
 
-async function safePlayerStorageSet(name: string, value: string): Promise<void> {
+// Debounced storage write: hold the latest snapshot and serialize once when
+// the timer fires, instead of stringifying the whole playlist on every set().
+let pendingWrite: { name: string; value: unknown } | null = null
+let writeTimer: ReturnType<typeof setTimeout> | null = null
+let lastWrittenValue: string | null = null
+const PERSIST_DEBOUNCE_MS = 2000
+
+function writePendingPlayerStorage(): void {
+  if (!pendingWrite) return
+  const { name, value } = pendingWrite
+  pendingWrite = null
   try {
-    window.localStorage?.setItem(name, value)
+    const serialized = JSON.stringify(value)
+    // Skip the synchronous localStorage write when nothing persisted changed
+    // (e.g. the set() only touched runtime-only fields outside partialize).
+    if (serialized === lastWrittenValue) return
+    lastWrittenValue = serialized
+    window.localStorage?.setItem(name, serialized)
   } catch {
     // ignore
   }
 }
 
-// Debounced storage write to avoid serializing large playlist on every state change
-let pendingWrite: { name: string; value: string } | null = null
-let writeTimer: ReturnType<typeof setTimeout> | null = null
-const PERSIST_DEBOUNCE_MS = 2000
-
-async function debouncedPlayerStorageSet(name: string, value: string): Promise<void> {
+function debouncedPlayerStorageSet(name: string, value: unknown): void {
   pendingWrite = { name, value }
   if (writeTimer) clearTimeout(writeTimer)
   writeTimer = setTimeout(() => {
-    if (pendingWrite) {
-      safePlayerStorageSet(pendingWrite.name, pendingWrite.value)
-      pendingWrite = null
-    }
     writeTimer = null
+    writePendingPlayerStorage()
   }, PERSIST_DEBOUNCE_MS)
 }
 
@@ -65,12 +74,7 @@ function flushPendingPlayerStorage() {
     clearTimeout(writeTimer)
     writeTimer = null
   }
-  if (pendingWrite) {
-    try {
-      window.localStorage?.setItem(pendingWrite.name, pendingWrite.value)
-    } catch { /* ignore */ }
-    pendingWrite = null
-  }
+  writePendingPlayerStorage()
 }
 
 // Ensure pending writes are flushed on page unload
@@ -115,6 +119,43 @@ async function applySavedAudioOutputDeviceToElement(
 function stripSongRuntimeFields(song: Song): Song {
   const { url, ...rest } = song as any
   return rest as Song
+}
+
+const partializePlayerState = (state: PlayerStore) => ({
+  volume: state.volume,
+  isMuted: state.isMuted,
+  playMode: state.playMode,
+  quality: state.quality,
+  preloadSongCount: state.preloadSongCount,
+  autoTemporarySourceSwitch: state.autoTemporarySourceSwitch,
+  audioEffects: state.audioEffects,
+  audioOutputDeviceId: state.audioOutputDeviceId,
+  playlistId: state.playlistId,
+  // Don't persist runtime-only URLs; they can expire and also waste storage.
+  playlist: state.playlist.map(stripSongRuntimeFields),
+  currentSong: state.currentSong ? stripSongRuntimeFields(state.currentSong) : null,
+})
+
+type PersistedPlayerSnapshot = ReturnType<typeof partializePlayerState>
+
+// Custom PersistStorage (not createJSONStorage): JSON.stringify happens in the
+// debounced writer above, not synchronously on every set().
+const playerPersistStorage: PersistStorage<PersistedPlayerSnapshot> = {
+  getItem: async (name) => {
+    const raw = await safePlayerStorageGet(name)
+    if (!raw) return null
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return null
+    }
+  },
+  setItem: (name, value) => {
+    debouncedPlayerStorageSet(name, value)
+  },
+  removeItem: (name) => {
+    void safePlayerStorageRemove(name)
+  },
 }
 
 function isSameSong(a: Song, b: Song): boolean {
@@ -354,7 +395,6 @@ interface PlayerStore {
   audioEffects: AudioEffectsState
   sleepTimerMode: SleepTimerMode | null
   sleepTimerEndAt: number | null
-  sleepTimerRemainingSeconds: number
 
   // Audio output device
   audioOutputDeviceId: string // 'default' or device ID
@@ -642,10 +682,10 @@ export const usePlayerStore = create<PlayerStore>()(
 
       const clearSleepTimerState = () => {
         clearSleepTimerHandles()
+        useSleepTimerCountdownStore.getState().setRemainingSeconds(0)
         set({
           sleepTimerMode: null,
           sleepTimerEndAt: null,
-          sleepTimerRemainingSeconds: 0,
         })
       }
 
@@ -1212,7 +1252,6 @@ export const usePlayerStore = create<PlayerStore>()(
       audioEffects: DEFAULT_AUDIO_EFFECTS_SETTINGS,
       sleepTimerMode: null,
       sleepTimerEndAt: null,
-      sleepTimerRemainingSeconds: 0,
       audioRef: null,
       audioOutputDeviceId: 'default',
       availableAudioDevices: [],
@@ -2308,15 +2347,17 @@ export const usePlayerStore = create<PlayerStore>()(
         const endAt = Date.now() + normalizedSeconds * 1000
 
         clearSleepTimerHandles()
+        useSleepTimerCountdownStore.getState().setRemainingSeconds(normalizedSeconds)
         set({
           sleepTimerMode: 'timer',
           sleepTimerEndAt: endAt,
-          sleepTimerRemainingSeconds: normalizedSeconds,
         })
 
+        // The countdown lives in its own store: ticking the persisted player
+        // store every second would re-serialize the whole playlist each tick.
         sleepIntervalId = window.setInterval(() => {
           const remainingSeconds = Math.max(0, Math.ceil((endAt - Date.now()) / 1000))
-          set({ sleepTimerRemainingSeconds: remainingSeconds })
+          useSleepTimerCountdownStore.getState().setRemainingSeconds(remainingSeconds)
         }, 1000)
 
         sleepTimeoutId = window.setTimeout(() => {
@@ -2326,10 +2367,10 @@ export const usePlayerStore = create<PlayerStore>()(
 
       stopAfterCurrentSong: () => {
         clearSleepTimerHandles()
+        useSleepTimerCountdownStore.getState().setRemainingSeconds(0)
         set({
           sleepTimerMode: 'songEnd',
           sleepTimerEndAt: null,
-          sleepTimerRemainingSeconds: 0,
         })
       },
 
@@ -2340,31 +2381,8 @@ export const usePlayerStore = create<PlayerStore>()(
     },
     {
       name: 'player-storage',
-      storage: createJSONStorage(() => ({
-        getItem: async (name) => {
-          return safePlayerStorageGet(name)
-        },
-        setItem: async (name, value) => {
-          await debouncedPlayerStorageSet(name, value)
-        },
-        removeItem: async (name) => {
-          await safePlayerStorageRemove(name)
-        },
-      })),
-      partialize: (state) => ({
-        volume: state.volume,
-        isMuted: state.isMuted,
-        playMode: state.playMode,
-        quality: state.quality,
-        preloadSongCount: state.preloadSongCount,
-        autoTemporarySourceSwitch: state.autoTemporarySourceSwitch,
-        audioEffects: state.audioEffects,
-        audioOutputDeviceId: state.audioOutputDeviceId,
-        playlistId: state.playlistId,
-        // Don't persist runtime-only URLs; they can expire and also waste storage.
-        playlist: state.playlist.map(stripSongRuntimeFields),
-        currentSong: state.currentSong ? stripSongRuntimeFields(state.currentSong) : null,
-      }),
+      storage: playerPersistStorage,
+      partialize: partializePlayerState,
       onRehydrateStorage: () => {
         console.log('[PlayerStore] Starting hydration...')
         return (state, error) => {
