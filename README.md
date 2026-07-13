@@ -10,7 +10,7 @@
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square">
 </p>
 
-博客： [月明星稀](https://www.ymxx.net)
+博客： [月明星稀](https://blog.leguans.cn)
 
 中文 | [English](README.en.md)
 
