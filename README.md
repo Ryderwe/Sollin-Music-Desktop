@@ -4,13 +4,15 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square"></a>
   <a href="https://github.com/Ryderwe/Sollin-Music-Desktop/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Ryderwe/Sollin-Music-Desktop?style=flat-square"></a>
   <a href="https://github.com/Ryderwe/Sollin-Music-Desktop/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Ryderwe/Sollin-Music-Desktop?include_prereleases&style=flat-square"></a>
+  <a href="https://github.com/Ryderwe/Sollin-Music-Desktop/releases"><img alt="Total release downloads" src="https://img.shields.io/github/downloads/Ryderwe/Sollin-Music-Desktop/total?style=flat-square&label=Total%20Release%20Downloads&color=F08AA8"></a>
+  <img alt="Repository views" src="https://visitor-badge.laobi.icu/badge?page_id=Ryderwe.Sollin-Music-Desktop&left_text=Repository%20Views&left_color=%235B78FF&right_color=%23F08AA8">
   <img alt="Electron 28" src="https://img.shields.io/badge/Electron-28-47848F?logo=electron&logoColor=white&style=flat-square">
   <img alt="React 18" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=20232A&style=flat-square">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white&style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square">
 </p>
 
-博客： [月明星稀](https://www.ymxx.net)
+博客： [月明星稀](https://blog.leguans.cn)
 
 中文 | [English](README.en.md)
 
