@@ -1,4 +1,4 @@
-import { memo, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, lazy, Suspense, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import AnimatedOutlet from './PageTransition'
 import {
@@ -22,6 +22,8 @@ import {
   SlidersHorizontal,
   RotateCcw,
   LocateFixed,
+  Volume2,
+  VolumeX,
 } from 'lucide-react'
 import * as Slider from '@radix-ui/react-slider'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -862,6 +864,8 @@ function LyricsPanel({
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const isLoading = usePlayerStore((s) => s.isLoading)
   const playMode = usePlayerStore((s) => s.playMode)
+  const volume = usePlayerStore((s) => s.volume)
+  const isMuted = usePlayerStore((s) => s.isMuted)
   const audioEffects = usePlayerStore((s) => s.audioEffects)
   const toggleLyricsPanel = useUIStore((s) => s.toggleLyricsPanel)
   const lyricsPanelTab = useUIStore((s) => s.lyricsPanelTab)
@@ -1082,6 +1086,19 @@ function LyricsPanel({
       default:
         return <Repeat className="w-5 h-5" />
     }
+  }
+
+  const VOLUME_WHEEL_STEP = 0.01
+  const displayedVolume = isMuted ? 0 : volume
+  const volumeLabel = `${Math.round(displayedVolume * 100)}%`
+
+  const handleVolumeWheel = (event: WheelEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const currentAudibleVolume = isMuted ? 0 : volume
+    const direction = event.deltaY < 0 ? 1 : -1
+    const nextVolume = Math.min(1, Math.max(0, currentAudibleVolume + direction * VOLUME_WHEEL_STEP))
+    usePlayerStore.getState().setVolume(Number(nextVolume.toFixed(2)))
   }
 
   // ESC key to close lyrics panel
@@ -1567,6 +1584,59 @@ function LyricsPanel({
                 className={cn('w-5 h-5', isSongFavorited && 'fill-primary-500 text-primary-500')}
               />
             </button>
+          </div>
+
+          {/* Volume control — same style as Apple Music / AMLL full player */}
+          <div
+            className={cn(
+              'mb-6 flex w-full max-w-[300px] items-center gap-3',
+              isDarkAppearance ? 'text-white/60' : 'text-slate-500'
+            )}
+            onWheel={handleVolumeWheel}
+          >
+            <button
+              type="button"
+              onClick={() => usePlayerStore.getState().toggleMute()}
+              className={cn(
+                'flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors',
+                isDarkAppearance
+                  ? 'hover:bg-white/10 hover:text-white'
+                  : 'hover:bg-black/[0.05] hover:text-slate-900'
+              )}
+              title={displayedVolume === 0 ? '取消静音' : '静音'}
+            >
+              {displayedVolume === 0 ? (
+                <VolumeX className="h-[18px] w-[18px]" />
+              ) : (
+                <Volume2 className="h-[18px] w-[18px]" />
+              )}
+            </button>
+            <Slider.Root
+              className="group relative flex h-5 flex-1 touch-none select-none items-center"
+              value={[displayedVolume]}
+              max={1}
+              step={0.01}
+              onValueChange={([value]) => usePlayerStore.getState().setVolume(value)}
+              aria-label="音量"
+            >
+              <Slider.Track className={cn(
+                'relative h-[5px] w-full grow rounded-full transition-all group-hover:h-[6px]',
+                sliderTrackClass
+              )}>
+                <Slider.Range className={cn('absolute h-full rounded-full', sliderRangeClass)} />
+              </Slider.Track>
+              <Slider.Thumb className={cn(
+                'block h-3.5 w-3.5 rounded-full shadow-lg outline-none transition-transform group-hover:scale-110 focus:ring-4',
+                sliderThumbClass,
+                isDarkAppearance ? 'ring-white/20' : 'ring-slate-900/15'
+              )} />
+            </Slider.Root>
+            <span className={cn(
+              'w-9 flex-shrink-0 text-right text-xs tabular-nums',
+              textMutedClass
+            )}>
+              {volumeLabel}
+            </span>
           </div>
 
           {/* Add to playlist & Settings */}
