@@ -100,8 +100,9 @@ export default function OnlinePlaylistDetail() {
 
   const handlePlayAll = () => {
     if (allApiSongs.length > 0) {
-      setPlaylist(allApiSongs, `online-playlist-${platform}-${id}`)
-      playSong(allApiSongs[0], allApiSongs, `online-playlist-${platform}-${id}`)
+      const name = playlistInfo?.name || importedPlaylist?.name || '在线歌单'
+      setPlaylist(allApiSongs, `online-playlist-${platform}-${id}`, name)
+      playSong(allApiSongs[0], allApiSongs, `online-playlist-${platform}-${id}`, undefined, name)
     }
   }
 
@@ -290,6 +291,7 @@ export default function OnlinePlaylistDetail() {
               songs={filteredSongs}
               playlist={allApiSongs}
               playlistId={`online-playlist-${platform}-${id}`}
+              playlistName={playlistInfo?.name || importedPlaylist?.name || undefined}
               showPlatform={false}
               scrollable={false}
               footer={hasMore && !searchQuery ? (

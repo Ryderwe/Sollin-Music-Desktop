@@ -9,8 +9,8 @@ export default function LocalFavorites() {
 
   const handlePlayLocalFavorites = () => {
     if (localFavorites.length > 0) {
-      setPlaylist(localFavorites, 'local-favorites')
-      playSong(localFavorites[0], localFavorites, 'local-favorites')
+      setPlaylist(localFavorites, 'local-favorites', '本地收藏')
+      playSong(localFavorites[0], localFavorites, 'local-favorites', undefined, '本地收藏')
     }
   }
 
@@ -34,6 +34,7 @@ export default function LocalFavorites() {
             <VirtualSongList
               songs={localFavorites}
               playlistId="local-favorites"
+              playlistName="本地收藏"
               showPlatform={false}
               scrollable={false}
             />

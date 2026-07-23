@@ -140,8 +140,8 @@ export default function Library() {
 
   const handlePlayLocalMusic = () => {
     if (sortedLocalSongs.length > 0) {
-      setPlaylist(sortedLocalSongs, 'local-library')
-      playSong(sortedLocalSongs[0], sortedLocalSongs, 'local-library')
+      setPlaylist(sortedLocalSongs, 'local-library', '本地音乐')
+      playSong(sortedLocalSongs[0], sortedLocalSongs, 'local-library', undefined, '本地音乐')
     }
   }
 
@@ -257,6 +257,7 @@ export default function Library() {
             <VirtualSongList
               songs={sortedLocalSongs}
               playlistId="local-library"
+              playlistName="本地音乐"
               showPlatform={false}
               scrollable={false}
             />

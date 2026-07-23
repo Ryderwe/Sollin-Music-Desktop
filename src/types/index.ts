@@ -208,6 +208,8 @@ export interface PlayerState {
   currentSong: Song | null
   playlist: Song[]
   playlistId?: string
+  /** Display name for the queue origin (playlist / list title). */
+  playlistName?: string
   isPlaying: boolean
   currentTime: number
   duration: number

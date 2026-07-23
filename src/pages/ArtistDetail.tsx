@@ -115,7 +115,8 @@ export default function ArtistDetail() {
 
     const playAll = () => {
         if (songs.length > 0) {
-            playSong(songs[0], songs, `artist-${id}`)
+            const name = artist?.name || '歌手'
+            playSong(songs[0], songs, `artist-${id}`, undefined, name)
         }
     }
 
@@ -245,6 +246,7 @@ export default function ArtistDetail() {
                             index={index}
                             playlist={songs}
                             playlistId={`artist-${id}`}
+                            playlistName={artist?.name || undefined}
                             showPlatform={false}
                         />
                     ))}

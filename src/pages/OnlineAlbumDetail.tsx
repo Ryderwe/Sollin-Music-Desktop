@@ -51,8 +51,9 @@ export default function OnlineAlbumDetail() {
 
   const handlePlayAll = () => {
     if (albumDetail && albumDetail.songs.length > 0) {
-      setPlaylist(albumDetail.songs, `online-album-${platform}-${id}`)
-      playSong(albumDetail.songs[0], albumDetail.songs, `online-album-${platform}-${id}`)
+      const name = albumDetail.name || '专辑'
+      setPlaylist(albumDetail.songs, `online-album-${platform}-${id}`, name)
+      playSong(albumDetail.songs[0], albumDetail.songs, `online-album-${platform}-${id}`, undefined, name)
     }
   }
 
@@ -150,6 +151,7 @@ export default function OnlineAlbumDetail() {
                 index={index}
                 playlist={filteredSongs}
                 playlistId={`online-album-${platform}-${id}`}
+                playlistName={albumDetail.name}
                 showPlatform={false}
               />
             ))

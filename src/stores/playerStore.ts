@@ -70,10 +70,35 @@ const partializePlayerState = (state: PlayerStore) => ({
   audioEffects: state.audioEffects,
   audioOutputDeviceId: state.audioOutputDeviceId,
   playlistId: state.playlistId,
+  playlistName: state.playlistName,
   // Don't persist runtime-only URLs; they can expire and also waste storage.
   playlist: state.playlist.map(stripSongRuntimeFields),
   currentSong: state.currentSong ? stripSongRuntimeFields(state.currentSong) : null,
 })
+
+/** Merge optional origin fields without wiping values when callers omit them. */
+function resolveNextPlaylistOrigin(
+  current: { playlistId: string | null; playlistName: string | null },
+  next: { playlistId?: string; playlistName?: string },
+): { playlistId: string | null; playlistName: string | null } {
+  let playlistId = current.playlistId
+  let playlistName = current.playlistName
+
+  if (next.playlistId !== undefined) {
+    const normalizedId = next.playlistId || null
+    if (normalizedId !== current.playlistId) {
+      // Id changed: take explicit name, or clear so UI falls back to id map.
+      playlistName = next.playlistName !== undefined ? (next.playlistName || null) : null
+    } else if (next.playlistName !== undefined) {
+      playlistName = next.playlistName || null
+    }
+    playlistId = normalizedId
+  } else if (next.playlistName !== undefined) {
+    playlistName = next.playlistName || null
+  }
+
+  return { playlistId, playlistName }
+}
 
 function isSameSong(a: Song, b: Song): boolean {
   return isSamePlayableSong(a, b)
@@ -257,6 +282,7 @@ interface PendingAudioCacheJob {
 interface StartPlaybackOptions {
   playlist?: Song[]
   playlistId?: string
+  playlistName?: string
   attemptContext?: PlaybackAttemptContext
   startTime?: number
   requestedQuality?: AudioQuality
@@ -319,6 +345,7 @@ interface PlayerStore {
   playbackSessionSrc: string | null
   playlist: Song[]
   playlistId: string | null
+  playlistName: string | null
   isPlaying: boolean
   currentTime: number
   duration: number
@@ -356,6 +383,7 @@ interface PlayerStore {
     playlist?: Song[],
     playlistId?: string,
     attemptContext?: PlaybackAttemptContext,
+    playlistName?: string,
   ) => Promise<void>
   togglePlay: () => void
   pause: () => void
@@ -371,7 +399,7 @@ interface PlayerStore {
   setQuality: (quality: AudioQuality) => void
   setPreloadSongCount: (count: number) => void
   setAutoTemporarySourceSwitch: (enabled: boolean) => void
-  setPlaylist: (songs: Song[], playlistId?: string) => void
+  setPlaylist: (songs: Song[], playlistId?: string, playlistName?: string) => void
   addToQueue: (song: Song) => void
   removeFromQueue: (index: number) => void
   clearQueue: () => void
@@ -848,7 +876,6 @@ export const usePlayerStore = create<PlayerStore>()(
           })
           await startPlayback(nextSong, {
             playlist,
-            playlistId: get().playlistId || undefined,
             attemptContext: { attemptedSongKeys },
           })
           return
@@ -1010,7 +1037,14 @@ export const usePlayerStore = create<PlayerStore>()(
         }
 
         if (options.playlist) {
-          set({ playlist: options.playlist, playlistId: options.playlistId || null })
+          const origin = resolveNextPlaylistOrigin(
+            { playlistId: get().playlistId, playlistName: get().playlistName },
+            {
+              ...(options.playlistId !== undefined ? { playlistId: options.playlistId } : {}),
+              ...(options.playlistName !== undefined ? { playlistName: options.playlistName } : {}),
+            },
+          )
+          set({ playlist: options.playlist, ...origin })
         }
 
         pushSongRuntimeState(song, requestedQuality, options, requestId)
@@ -1178,6 +1212,7 @@ export const usePlayerStore = create<PlayerStore>()(
       playbackSessionSrc: null,
       playlist: [],
       playlistId: null,
+      playlistName: null,
       isPlaying: false,
       currentTime: 0,
       duration: 0,
@@ -1358,8 +1393,11 @@ export const usePlayerStore = create<PlayerStore>()(
         }
       },
 
-      playSong: async (song, playlist, playlistId, attemptContext) => {
+      playSong: async (song, playlist, playlistId, attemptContext, playlistName) => {
         const nextPlaylist = playlist ? getAllowedSongs(playlist) : undefined
+        const originPatch: { playlistId?: string; playlistName?: string } = {}
+        if (playlistId !== undefined) originPatch.playlistId = playlistId
+        if (playlistName !== undefined) originPatch.playlistName = playlistName
 
         if (isSongBlockedByRules(song)) {
           const candidate = playlist
@@ -1373,14 +1411,18 @@ export const usePlayerStore = create<PlayerStore>()(
             })
             await startPlayback(candidate, {
               playlist: nextPlaylist,
-              playlistId,
+              ...originPatch,
               attemptContext,
             })
             return
           }
 
           if (nextPlaylist) {
-            set({ playlist: nextPlaylist, playlistId: playlistId || null })
+            const origin = resolveNextPlaylistOrigin(
+              { playlistId: get().playlistId, playlistName: get().playlistName },
+              originPatch,
+            )
+            set({ playlist: nextPlaylist, ...origin })
           }
 
           useUIStore.getState().addToast({
@@ -1392,7 +1434,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
         await startPlayback(song, {
           playlist: nextPlaylist,
-          playlistId,
+          ...originPatch,
           attemptContext,
         })
         return
@@ -1710,7 +1752,6 @@ export const usePlayerStore = create<PlayerStore>()(
         if (nextSong) {
           void startPlayback(nextSong, {
             playlist,
-            playlistId: get().playlistId || undefined,
             preserveUpcomingPlaybackPlan: Boolean(plannedNextSong) && !historyForwardSong,
             skipPlaybackHistoryStack: Boolean(historyForwardSong),
             playbackHistoryCursor: historyForwardSong ? historyForwardIndex : undefined,
@@ -1733,7 +1774,6 @@ export const usePlayerStore = create<PlayerStore>()(
           if (!historyBackSong) return
           void startPlayback(historyBackSong, {
             playlist,
-            playlistId: get().playlistId || undefined,
             skipPlaybackHistoryStack: true,
             playbackHistoryCursor: historyBackIndex,
           })
@@ -1746,7 +1786,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
         const prevSong = playlist[prevIndex]
         if (prevSong) {
-          get().playSong(prevSong, playlist, get().playlistId || undefined)
+          get().playSong(prevSong, playlist)
         }
       },
 
@@ -1830,10 +1870,17 @@ export const usePlayerStore = create<PlayerStore>()(
         }
       },
 
-      setPlaylist: (songs, playlistId) => {
+      setPlaylist: (songs, playlistId, playlistName) => {
         clearUpcomingPlaybackPlan()
         clearPlaybackHistoryStack()
-        set({ playlist: getAllowedSongs(songs), playlistId: playlistId || null })
+        const origin = resolveNextPlaylistOrigin(
+          { playlistId: get().playlistId, playlistName: get().playlistName },
+          {
+            ...(playlistId !== undefined ? { playlistId } : {}),
+            ...(playlistName !== undefined ? { playlistName } : {}),
+          },
+        )
+        set({ playlist: getAllowedSongs(songs), ...origin })
         if (get().isPlaying) {
           void preloadUpcomingSongUrls(activePlaybackRequestId)
         }
@@ -1876,7 +1923,7 @@ export const usePlayerStore = create<PlayerStore>()(
       clearQueue: () => {
         clearUpcomingPlaybackPlan()
         clearPlaybackHistoryStack()
-        set({ playlist: [], playlistId: null })
+        set({ playlist: [], playlistId: null, playlistName: null })
       },
 
       shufflePlaylist: () => {

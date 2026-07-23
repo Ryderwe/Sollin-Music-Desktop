@@ -180,6 +180,7 @@ export default function NeteaseHome() {
                             index={index}
                             playlist={songs}
                             playlistId="netease-search"
+                            playlistName="搜索结果"
                             showPlatform={false}
                         />
                     ))}
@@ -561,6 +562,7 @@ export default function NeteaseHome() {
                                                     index={index}
                                                     playlist={newSongs}
                                                     playlistId="netease-new-songs"
+                                                    playlistName="新歌速递"
                                                     showPlatform={false}
                                                 />
                                             ))}

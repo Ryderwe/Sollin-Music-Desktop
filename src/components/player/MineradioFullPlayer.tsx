@@ -11,6 +11,7 @@ import { usePlaybackProgressStore } from '@/stores/playbackProgressStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useUserStore } from '@/stores/userStore'
 import { cn } from '@/utils/cn'
+import { resolvePlaylistSourceLabel } from '@/utils/playlistSource'
 import { convertLyricsToMineradio } from '@/utils/mineradioLyricConverter'
 import { isGatewayCoverUrl, resolveCoverUrl } from '@/services/officialCoverApi'
 import { createMineradioEngine } from '@/vendor/mineradio/engine'
@@ -63,6 +64,8 @@ export default function MineradioFullPlayer() {
   const volume = usePlayerStore((s) => s.volume)
   const isMuted = usePlayerStore((s) => s.isMuted)
   const playlist = usePlayerStore((s) => s.playlist)
+  const playlistId = usePlayerStore((s) => s.playlistId)
+  const playlistName = usePlayerStore((s) => s.playlistName)
   const lyricData = usePlayerStore((s) => s.lyricData)
   const lyrics = usePlayerStore((s) => s.lyrics)
   const currentTime = usePlaybackProgressStore((s) => s.currentTime)
@@ -302,9 +305,10 @@ export default function MineradioFullPlayer() {
       usePlayerStore.getState().togglePlay()
       return
     }
-    void usePlayerStore.getState().playSong(song, playlist, 'queue')
+    void usePlayerStore.getState().playSong(song, playlist)
   }
 
+  const queueSourceLabel = resolvePlaylistSourceLabel(playlistId, playlistName)
   const engineState = engineReady && engineRef.current ? engineRef.current.getState() : null
 
   return (
@@ -357,9 +361,12 @@ export default function MineradioFullPlayer() {
         {miniQueueOpen && (
           <div id="mini-queue-popover" className="mini-queue-popover show">
             <div className="mini-queue-head">
-              <div>
+              <div className="min-w-0">
                 <div className="mini-queue-title">当前队列</div>
-                <div id="mini-queue-count" className="mini-queue-count">{playlist.length} 首</div>
+                <div id="mini-queue-count" className="mini-queue-count">
+                  {playlist.length} 首
+                  {queueSourceLabel ? ` · 来自 ${queueSourceLabel}` : ''}
+                </div>
               </div>
               <button
                 className="fx-mini-btn ghost"

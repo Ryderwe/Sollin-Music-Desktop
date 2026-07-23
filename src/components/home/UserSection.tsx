@@ -47,8 +47,8 @@ export default function UserSection() {
     const handlePlayDaily = () => {
         const songs = dailyRecommend.songs as Song[]
         if (songs.length > 0) {
-            setPlaylist(songs, 'daily-recommend')
-            playSong(songs[0], songs)
+            setPlaylist(songs, 'daily-recommend', '每日推荐')
+            playSong(songs[0], songs, 'daily-recommend', undefined, '每日推荐')
         }
     }
 

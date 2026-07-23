@@ -66,8 +66,9 @@ export default function ToplistDetail() {
 
   const handlePlayAll = () => {
     if (allApiSongs.length > 0) {
-      setPlaylist(allApiSongs, `toplist-${id}`)
-      playSong(allApiSongs[0], allApiSongs, `toplist-${id}`)
+      const name = toplist?.name || '排行榜'
+      setPlaylist(allApiSongs, `toplist-${id}`, name)
+      playSong(allApiSongs[0], allApiSongs, `toplist-${id}`, undefined, name)
     }
   }
 
@@ -83,8 +84,9 @@ export default function ToplistDetail() {
   const handleShuffle = () => {
     if (allApiSongs.length > 0) {
       const shuffled = [...allApiSongs].sort(() => Math.random() - 0.5)
-      setPlaylist(shuffled, `toplist-${id}-shuffle`)
-      playSong(shuffled[0], shuffled, `toplist-${id}-shuffle`)
+      const name = toplist?.name || '排行榜'
+      setPlaylist(shuffled, `toplist-${id}-shuffle`, name)
+      playSong(shuffled[0], shuffled, `toplist-${id}-shuffle`, undefined, name)
     }
   }
 
@@ -173,6 +175,7 @@ export default function ToplistDetail() {
             songs={filteredSongs}
             playlist={allApiSongs}
             playlistId={`toplist-${id}`}
+            playlistName={toplist?.name || undefined}
             showPlatform={false}
             scrollable={false}
             footer={hasMore ? (

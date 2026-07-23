@@ -10,6 +10,7 @@ const DEFAULT_VIRTUALIZE_THRESHOLD = 1000
 interface VirtualSongListProps {
   songs: Song[]
   playlistId: string
+  playlistName?: string
   showPlatform?: boolean
   showAlbum?: boolean
   overscan?: number
@@ -25,6 +26,7 @@ interface VirtualSongListProps {
 export default function VirtualSongList({
   songs,
   playlistId,
+  playlistName,
   showPlatform = true,
   showAlbum = true,
   overscan = DEFAULT_OVERSCAN,
@@ -112,6 +114,7 @@ export default function VirtualSongList({
                   index={index}
                   playlist={playlist || songs}
                   playlistId={playlistId}
+                  playlistName={playlistName}
                   showPlatform={showPlatform}
                   showAlbum={showAlbum}
                 />
@@ -161,6 +164,7 @@ export default function VirtualSongList({
                   index={index}
                   playlist={playlist || songs}
                   playlistId={playlistId}
+                  playlistName={playlistName}
                   showPlatform={showPlatform}
                   showAlbum={showAlbum}
                 />

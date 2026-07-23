@@ -271,6 +271,7 @@ export default function Search() {
                         index={index}
                         playlist={songs}
                         playlistId={`search-${searchPlatform}-${searchCategory}-${searchQuery}`}
+                        playlistName={searchQuery ? `搜索：${searchQuery}` : '搜索结果'}
                         showPlatform={searchPlatform === 'all'}
                       />
                     ))}

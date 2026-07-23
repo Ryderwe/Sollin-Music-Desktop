@@ -38,6 +38,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { usePlaybackProgressStore } from '@/stores/playbackProgressStore'
 import { cn } from '@/utils/cn'
+import { resolvePlaylistSourceLabel } from '@/utils/playlistSource'
 import CoverImage from '@/components/ui/CoverImage'
 import CommentSection from '@/components/CommentSection'
 import AudioVisualizer from '@/components/AudioVisualizer'
@@ -578,9 +579,12 @@ export default function Layout() {
 // Queue Panel Component
 function QueuePanel() {
   const playlist = usePlayerStore((s) => s.playlist)
+  const playlistId = usePlayerStore((s) => s.playlistId)
+  const playlistName = usePlayerStore((s) => s.playlistName)
   const currentSong = usePlayerStore((s) => s.currentSong)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
   const parentRef = useRef<HTMLDivElement>(null)
+  const sourceLabel = resolvePlaylistSourceLabel(playlistId, playlistName)
 
   const virtualizer = useVirtualizer({
     count: playlist.length,
@@ -591,8 +595,15 @@ function QueuePanel() {
 
   return (
     <div className="p-4 overflow-x-hidden h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <h2 className="text-lg font-semibold truncate">播放队列</h2>
+      <div className="flex items-center justify-between mb-4 flex-shrink-0 gap-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg font-semibold truncate">播放队列</h2>
+          {sourceLabel && (
+            <p className="text-xs text-[var(--text-muted)] truncate mt-0.5" title={sourceLabel}>
+              来自 · {sourceLabel}
+            </p>
+          )}
+        </div>
         <button onClick={() => useUIStore.getState().toggleQueuePanel()} className="btn-icon flex-shrink-0">
           <X className="w-5 h-5" />
         </button>
@@ -641,7 +652,7 @@ function QueuePanel() {
                         if (isCurrentSong) {
                           usePlayerStore.getState().togglePlay()
                         } else {
-                          usePlayerStore.getState().playSong(song, playlist, 'queue')
+                          usePlayerStore.getState().playSong(song, playlist)
                         }
                       }}
                       className="flex-1 min-w-0 flex items-center gap-2 text-left hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors overflow-hidden"

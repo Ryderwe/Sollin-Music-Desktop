@@ -71,7 +71,7 @@ export default function PersonalFM() {
     // Play current FM song
     const playCurrentSong = useCallback(() => {
         if (currentFmSong) {
-            playSong(currentFmSong, fmSongs.slice(currentIndex), 'personal-fm')
+            playSong(currentFmSong, fmSongs.slice(currentIndex), 'personal-fm', undefined, '私人 FM')
         }
     }, [currentFmSong, fmSongs, currentIndex, playSong])
 

@@ -15,6 +15,7 @@ import { useUserStore } from '@/stores/userStore'
 import { usePlaybackProgressStore } from '@/stores/playbackProgressStore'
 import { convertSollinLyricsToAmll } from '@/utils/amllLyricConverter'
 import { cn } from '@/utils/cn'
+import { resolvePlaylistSourceLabel } from '@/utils/playlistSource'
 import CommentSection from '@/components/CommentSection'
 import CoverImage from '@/components/ui/CoverImage'
 import PlayerBackdrop from '@/components/player/PlayerBackdrop'
@@ -79,6 +80,8 @@ export default function AmllFullPlayer() {
   const volume = usePlayerStore((s) => s.volume)
   const isMuted = usePlayerStore((s) => s.isMuted)
   const playlist = usePlayerStore((s) => s.playlist)
+  const playlistId = usePlayerStore((s) => s.playlistId)
+  const playlistName = usePlayerStore((s) => s.playlistName)
   const lyricData = usePlayerStore((s) => s.lyricData)
   const lyrics = usePlayerStore((s) => s.lyrics)
   const currentTime = usePlaybackProgressStore((s) => s.currentTime)
@@ -253,9 +256,10 @@ export default function AmllFullPlayer() {
       return
     }
 
-    usePlayerStore.getState().playSong(song, playlist, 'queue')
+    usePlayerStore.getState().playSong(song, playlist)
   }
 
+  const queueSourceLabel = resolvePlaylistSourceLabel(playlistId, playlistName)
   const isSongFavorited = currentSong ? isFavorite(currentSong.id, currentSong.platform) : false
   const displayedVolume = isMuted ? 0 : volume
   const volumeLabel = `${Math.round(displayedVolume * 100)}%`
@@ -691,16 +695,23 @@ export default function AmllFullPlayer() {
               </div>
             ) : sideView === 'queue' ? (
               <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-black/18 p-4 ring-1 ring-white/10 backdrop-blur-md">
-                <div className="mb-4 flex flex-shrink-0 items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <ListMusic className="h-5 w-5 text-white/70" />
-                    <h3 className="font-medium text-white">播放队列</h3>
-                    <span className="text-sm text-white/45">({playlist.length})</span>
+                <div className="mb-4 flex flex-shrink-0 items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <ListMusic className="h-5 w-5 flex-shrink-0 text-white/70" />
+                      <h3 className="font-medium text-white">播放队列</h3>
+                      <span className="text-sm text-white/45">({playlist.length})</span>
+                    </div>
+                    {queueSourceLabel && (
+                      <p className="mt-1 truncate pl-7 text-xs text-white/45" title={queueSourceLabel}>
+                        来自 · {queueSourceLabel}
+                      </p>
+                    )}
                   </div>
                   {playlist.length > 0 && (
                     <button
                       onClick={() => usePlayerStore.getState().clearQueue()}
-                      className="rounded-full px-3 py-1.5 text-sm text-white/45 transition-colors hover:bg-white/10 hover:text-white/80"
+                      className="flex-shrink-0 rounded-full px-3 py-1.5 text-sm text-white/45 transition-colors hover:bg-white/10 hover:text-white/80"
                     >
                       清空
                     </button>

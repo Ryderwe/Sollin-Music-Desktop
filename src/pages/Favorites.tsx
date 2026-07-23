@@ -9,8 +9,8 @@ export default function Favorites() {
 
   const handlePlayFavorites = () => {
     if (favorites.length > 0) {
-      setPlaylist(favorites, 'favorites')
-      playSong(favorites[0], favorites, 'favorites')
+      setPlaylist(favorites, 'favorites', '我喜欢的音乐')
+      playSong(favorites[0], favorites, 'favorites', undefined, '我喜欢的音乐')
     }
   }
 
@@ -34,6 +34,7 @@ export default function Favorites() {
             <VirtualSongList
               songs={favorites}
               playlistId="favorites"
+              playlistName="我喜欢的音乐"
               scrollable={false}
             />
           </div>

@@ -34,6 +34,7 @@ interface SongRowProps {
   compact?: boolean
   playlist?: Song[]
   playlistId?: string
+  playlistName?: string
   isPlaying?: boolean
   onPlay?: () => void
 }
@@ -48,6 +49,7 @@ export default memo(function SongRow({
   compact = false,
   playlist,
   playlistId,
+  playlistName,
   isPlaying: isPlayingProp,
   onPlay,
 }: SongRowProps) {
@@ -86,7 +88,13 @@ export default memo(function SongRow({
     if (isCurrentSong) {
       usePlayerStore.getState().togglePlay()
     } else {
-      usePlayerStore.getState().playSong(song, playlist || [song], playlistId)
+      usePlayerStore.getState().playSong(
+        song,
+        playlist || [song],
+        playlistId,
+        undefined,
+        playlistName,
+      )
     }
   }
 

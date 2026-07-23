@@ -394,14 +394,18 @@ export default function LocalMusic() {
     }
   }, [artistGroups, selectedArtistId])
 
-  const handlePlayCollection = async(collectionSongs: Song[], playlistId: string) => {
+  const handlePlayCollection = async(
+    collectionSongs: Song[],
+    playlistId: string,
+    playlistName?: string,
+  ) => {
     if (!collectionSongs.length) return
-    setPlaylist(collectionSongs, playlistId)
-    await playSong(collectionSongs[0], collectionSongs, playlistId)
+    setPlaylist(collectionSongs, playlistId, playlistName)
+    await playSong(collectionSongs[0], collectionSongs, playlistId, undefined, playlistName)
   }
 
   const handlePlayAll = async() => {
-    await handlePlayCollection(sortedSongs, 'local-library')
+    await handlePlayCollection(sortedSongs, 'local-library', '本地音乐')
   }
 
   const renderCollectionCover = (cover: string | undefined, alt: string, rounded = 'rounded-2xl') => {
@@ -633,6 +637,7 @@ export default function LocalMusic() {
                       index={index}
                       playlist={sortedSongs}
                       playlistId="local-library"
+                      playlistName="本地音乐"
                       showPlatform={false}
                     />
                   ))}
@@ -706,7 +711,7 @@ export default function LocalMusic() {
                           <button
                             onClick={(event) => {
                               event.stopPropagation()
-                              void handlePlayCollection(album.songs, buildLocalPlaylistId('album', album.id))
+                              void handlePlayCollection(album.songs, buildLocalPlaylistId('album', album.id), album.name)
                             }}
                             className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-500 text-white transition-colors hover:bg-violet-600"
                             aria-label={`播放专辑 ${album.name}`}
@@ -746,7 +751,7 @@ export default function LocalMusic() {
                         </div>
                         <div className="mt-5 flex flex-wrap items-center gap-3">
                           <button
-                            onClick={() => void handlePlayCollection(selectedAlbum.songs, buildLocalPlaylistId('album', selectedAlbum.id))}
+                            onClick={() => void handlePlayCollection(selectedAlbum.songs, buildLocalPlaylistId('album', selectedAlbum.id), selectedAlbum.name)}
                             className="inline-flex items-center gap-2 rounded-2xl bg-violet-500 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-violet-600"
                           >
                             <Play className="h-4 w-4" />
@@ -769,6 +774,7 @@ export default function LocalMusic() {
                             index={index}
                             playlist={selectedAlbum.songs}
                             playlistId={buildLocalPlaylistId('album', selectedAlbum.id)}
+                            playlistName={selectedAlbum.name}
                             showAlbum={false}
                             showPlatform={false}
                           />
@@ -828,7 +834,7 @@ export default function LocalMusic() {
                           <button
                             onClick={(event) => {
                               event.stopPropagation()
-                              void handlePlayCollection(artist.songs, buildLocalPlaylistId('artist', artist.id))
+                              void handlePlayCollection(artist.songs, buildLocalPlaylistId('artist', artist.id), artist.name)
                             }}
                             className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-500 text-white transition-colors hover:bg-violet-600"
                             aria-label={`播放艺术家 ${artist.name}`}
@@ -857,7 +863,7 @@ export default function LocalMusic() {
                         </div>
                         <div className="mt-5 flex flex-wrap items-center gap-3">
                           <button
-                            onClick={() => void handlePlayCollection(selectedArtist.songs, buildLocalPlaylistId('artist', selectedArtist.id))}
+                            onClick={() => void handlePlayCollection(selectedArtist.songs, buildLocalPlaylistId('artist', selectedArtist.id), selectedArtist.name)}
                             className="inline-flex items-center gap-2 rounded-2xl bg-violet-500 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-violet-600"
                           >
                             <Play className="h-4 w-4" />
@@ -903,6 +909,7 @@ export default function LocalMusic() {
                             index={index}
                             playlist={selectedArtist.songs}
                             playlistId={buildLocalPlaylistId('artist', selectedArtist.id)}
+                            playlistName={selectedArtist.name}
                             showPlatform={false}
                           />
                         ))}

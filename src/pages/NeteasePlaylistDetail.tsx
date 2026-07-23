@@ -124,8 +124,9 @@ export default function NeteasePlaylistDetail() {
     const handlePlayAll = () => {
         if (allApiSongs.length > 0) {
             setIsIntelligenceMode(false)
-            setPlaylist(allApiSongs, `netease-playlist-${id}`)
-            playSong(allApiSongs[0], allApiSongs, `netease-playlist-${id}`)
+            const name = displayName || '网易云歌单'
+            setPlaylist(allApiSongs, `netease-playlist-${id}`, name)
+            playSong(allApiSongs[0], allApiSongs, `netease-playlist-${id}`, undefined, name)
         }
     }
 
@@ -175,8 +176,8 @@ export default function NeteasePlaylistDetail() {
             if (intelligenceSongs.length > 0) {
                 const playlist = [seedSong, ...intelligenceSongs]
                 setIsIntelligenceMode(true)
-                setPlaylist(playlist, `netease-intelligence-${id}`)
-                playSong(seedSong, playlist, `netease-intelligence-${id}`)
+                setPlaylist(playlist, `netease-intelligence-${id}`, '心动模式')
+                playSong(seedSong, playlist, `netease-intelligence-${id}`, undefined, '心动模式')
                 addToast({ type: 'success', message: '已开启心动模式 💗' })
             } else {
                 addToast({ type: 'warning', message: '暂无推荐歌曲' })
@@ -497,6 +498,7 @@ export default function NeteasePlaylistDetail() {
                             songs={filteredSongs}
                             playlist={songs}
                             playlistId={`netease-playlist-${id}`}
+                            playlistName={displayName || undefined}
                             showPlatform={false}
                             scrollable={false}
                             footer={hasMore && !searchQuery ? (
@@ -534,6 +536,7 @@ export default function NeteasePlaylistDetail() {
                                             index={index}
                                             playlist={songs}
                                             playlistId={`netease-playlist-${id}`}
+                                            playlistName={displayName || undefined}
                                             showPlatform={false}
                                         />
                                     </div>

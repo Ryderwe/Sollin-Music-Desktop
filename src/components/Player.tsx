@@ -387,6 +387,7 @@ export default function Player() {
   // 保存原始播放列表用于关闭心动模式时恢复
   const [originalPlaylist, setOriginalPlaylist] = useState<typeof playlist>([])
   const [originalPlaylistId, setOriginalPlaylistId] = useState<string>('')
+  const [originalPlaylistName, setOriginalPlaylistName] = useState<string | null>(null)
 
   // 心动模式 - 只对小芸音乐歌曲有效
   const handleIntelligenceMode = async () => {
@@ -400,7 +401,11 @@ export default function Player() {
       setIsIntelligenceMode(false)
       // 恢复原始播放列表
       if (originalPlaylist.length > 0) {
-        usePlayerStore.getState().setPlaylist(originalPlaylist, originalPlaylistId)
+        usePlayerStore.getState().setPlaylist(
+          originalPlaylist,
+          originalPlaylistId || undefined,
+          originalPlaylistName ?? undefined,
+        )
       }
       addToast({ type: 'info', message: '已关闭心动模式' })
       return
@@ -409,9 +414,11 @@ export default function Player() {
     setIntelligenceLoading(true)
     try {
       // 保存当前播放列表
-      const currentPlaylistId = usePlayerStore.getState().playlistId || ''
+      const playerState = usePlayerStore.getState()
+      const currentPlaylistId = playerState.playlistId || ''
       setOriginalPlaylist([...playlist])
       setOriginalPlaylistId(currentPlaylistId)
+      setOriginalPlaylistName(playerState.playlistName)
 
       // 使用当前歌曲和当前播放列表ID
       const playlistIdMatch = currentPlaylistId.match(/netease-playlist-(\d+)/)
@@ -428,7 +435,7 @@ export default function Player() {
         // 将当前歌曲放在最前面
         const newPlaylist = [currentSong, ...intelligenceSongs]
         setIsIntelligenceMode(true)
-        usePlayerStore.getState().setPlaylist(newPlaylist, `netease-intelligence-${pid}`)
+        usePlayerStore.getState().setPlaylist(newPlaylist, `netease-intelligence-${pid}`, '心动模式')
         addToast({ type: 'success', message: '已开启心动模式 💗' })
       } else {
         addToast({ type: 'warning', message: '暂无推荐歌曲' })

@@ -57,8 +57,8 @@ export default function MyOnlinePlaylistDetail() {
   const handlePlayAll = () => {
     if (!playlist || filteredSongs.length === 0) return
     const playlistId = `my-online-playlist-${playlist.id}`
-    setPlaylist(filteredSongs, playlistId)
-    playSong(filteredSongs[0], filteredSongs, playlistId)
+    setPlaylist(filteredSongs, playlistId, playlist.name)
+    playSong(filteredSongs[0], filteredSongs, playlistId, undefined, playlist.name)
   }
 
   const canRefresh = Boolean(playlist?.sourceId?.trim())
@@ -219,6 +219,7 @@ export default function MyOnlinePlaylistDetail() {
             <VirtualSongList
               songs={filteredSongs}
               playlistId={`my-online-playlist-${playlist.id}`}
+              playlistName={playlist.name}
               showPlatform={false}
               scrollable={false}
             />

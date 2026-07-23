@@ -251,8 +251,9 @@ export default function Home() {
     e.stopPropagation()
     const songs = toplistSongs[toplistId]
     if (songs && songs.length > 0) {
-      setPlaylist(songs, `toplist-${toplistId}`)
-      playSong(songs[0], songs, `toplist-${toplistId}`)
+      const name = toplists.find((item) => item.id === toplistId)?.name || '排行榜'
+      setPlaylist(songs, `toplist-${toplistId}`, name)
+      playSong(songs[0], songs, `toplist-${toplistId}`, undefined, name)
     }
   }
 

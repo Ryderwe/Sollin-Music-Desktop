@@ -9,8 +9,8 @@ export default function Recent() {
 
   const handlePlayRecent = () => {
     if (recentlyPlayed.length > 0) {
-      setPlaylist(recentlyPlayed, 'recent')
-      playSong(recentlyPlayed[0], recentlyPlayed, 'recent')
+      setPlaylist(recentlyPlayed, 'recent', '最近播放')
+      playSong(recentlyPlayed[0], recentlyPlayed, 'recent', undefined, '最近播放')
     }
   }
 
@@ -34,6 +34,7 @@ export default function Recent() {
             <VirtualSongList
               songs={recentlyPlayed}
               playlistId="recent"
+              playlistName="最近播放"
               scrollable={false}
             />
           </div>

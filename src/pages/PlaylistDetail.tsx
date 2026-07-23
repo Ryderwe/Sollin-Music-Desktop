@@ -54,17 +54,17 @@ export default function PlaylistDetail() {
 
   const handlePlayAll = () => {
     if (playlist.songs.length > 0) {
-      setPlaylist(playlist.songs, playlist.id)
-      playSong(playlist.songs[0], playlist.songs, playlist.id)
+      setPlaylist(playlist.songs, playlist.id, playlist.name)
+      playSong(playlist.songs[0], playlist.songs, playlist.id, undefined, playlist.name)
     }
   }
 
   const handleShufflePlay = () => {
     if (playlist.songs.length > 0) {
       setPlayMode('shuffle')
-      setPlaylist(playlist.songs, playlist.id)
+      setPlaylist(playlist.songs, playlist.id, playlist.name)
       const idx = Math.floor(Math.random() * playlist.songs.length)
-      playSong(playlist.songs[idx], playlist.songs, playlist.id)
+      playSong(playlist.songs[idx], playlist.songs, playlist.id, undefined, playlist.name)
     }
   }
 
@@ -200,6 +200,7 @@ export default function PlaylistDetail() {
               songs={filteredSongs}
               playlist={playlist.songs}
               playlistId={playlist.id}
+              playlistName={playlist.name}
               scrollable={false}
             />
           </div>

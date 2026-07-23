@@ -43,7 +43,8 @@ export default function AlbumDetail() {
 
     const playAll = () => {
         if (songs.length > 0) {
-            playSong(songs[0], songs, `album-${id}`)
+            const name = album?.name || '专辑'
+            playSong(songs[0], songs, `album-${id}`, undefined, name)
         }
     }
 
@@ -180,6 +181,7 @@ export default function AlbumDetail() {
                             index={index}
                             playlist={songs}
                             playlistId={`album-${id}`}
+                            playlistName={album?.name || undefined}
                             showPlatform={false}
                         />
                     ))}
