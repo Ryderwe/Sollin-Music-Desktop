@@ -43,6 +43,21 @@ let forceQuit = false
 const isDev = !app.isPackaged
 const isMac = process.platform === 'darwin'
 const isWin = process.platform === 'win32'
+
+/** Playback state mirrored into tray / Windows thumbar / macOS dock menu. */
+type PlayerMediaState = {
+  title: string
+  artist: string
+  isPlaying: boolean
+  empty: boolean
+}
+
+let playerMediaState: PlayerMediaState = {
+  title: '',
+  artist: '',
+  isPlaying: false,
+  empty: true,
+}
 let desktopLyricsWindow: BrowserWindow | null = null
 let desktopLyricsEnabled = false
 let menuBarLyricsEnabled = false
@@ -2849,9 +2864,16 @@ function createWindow() {
   // Graceful show
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
+    // Windows thumbar buttons (prev / play-pause / next)
+    setWindowsThumbarButtons()
     if (isDev) {
       mainWindow?.webContents.openDevTools({ mode: 'detach' })
     }
+  })
+
+  // Re-apply thumbar after hide→show (Windows may drop them)
+  mainWindow.on('show', () => {
+    setWindowsThumbarButtons()
   })
 
   if (!isDev) {
@@ -2967,6 +2989,169 @@ function createWindow() {
   })
 }
 
+function getBuildAssetDir(...subpaths: string[]): string | null {
+  const candidates = [
+    path.join(__dirname, '../build', ...subpaths),
+    path.join(__dirname, '../../build', ...subpaths),
+    path.join(app.getAppPath(), 'build', ...subpaths),
+    path.join(process.resourcesPath || '', 'build', ...subpaths),
+  ]
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return null
+}
+
+function sendTrayPlayerAction(action: 'play-pause' | 'previous' | 'next') {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send(`tray:${action}`)
+}
+
+function getTaskbarIcon(name: 'prev' | 'play' | 'pause' | 'next'): Electron.NativeImage {
+  const iconPath = getBuildAssetDir('taskbar', `${name}.png`)
+  if (!iconPath) {
+    console.warn(`Taskbar icon not found: ${name}.png`)
+    return nativeImage.createEmpty()
+  }
+  return nativeImage.createFromPath(iconPath)
+}
+
+/** Windows taskbar thumbnail toolbar (prev / play-pause / next), same idea as lx-music. */
+function setWindowsThumbarButtons() {
+  if (!isWin || !mainWindow || mainWindow.isDestroyed()) return
+
+  const empty = playerMediaState.empty
+  const flags: Array<'disabled' | 'nobackground'> = empty
+    ? ['nobackground', 'disabled']
+    : ['nobackground']
+
+  const buttons: Electron.ThumbarButton[] = [
+    {
+      icon: getTaskbarIcon('prev'),
+      tooltip: '上一首',
+      flags,
+      click: () => sendTrayPlayerAction('previous'),
+    },
+    playerMediaState.isPlaying
+      ? {
+          icon: getTaskbarIcon('pause'),
+          tooltip: '暂停',
+          flags,
+          click: () => sendTrayPlayerAction('play-pause'),
+        }
+      : {
+          icon: getTaskbarIcon('play'),
+          tooltip: '播放',
+          flags,
+          click: () => sendTrayPlayerAction('play-pause'),
+        },
+    {
+      icon: getTaskbarIcon('next'),
+      tooltip: '下一首',
+      flags,
+      click: () => sendTrayPlayerAction('next'),
+    },
+  ]
+
+  try {
+    mainWindow.setThumbarButtons(buttons)
+  } catch (error) {
+    console.warn('setThumbarButtons failed:', error)
+  }
+}
+
+function updateTrayContextMenu() {
+  if (!tray) return
+
+  const empty = playerMediaState.empty
+  const playLabel = playerMediaState.isPlaying ? '暂停' : '播放'
+
+  const contextMenu = Menu.buildFromTemplate([
+    { label: '显示主窗口', click: () => mainWindow?.show() },
+    { type: 'separator' },
+    {
+      label: playLabel,
+      enabled: !empty,
+      click: () => sendTrayPlayerAction('play-pause'),
+    },
+    {
+      label: '上一首',
+      enabled: !empty,
+      click: () => sendTrayPlayerAction('previous'),
+    },
+    {
+      label: '下一首',
+      enabled: !empty,
+      click: () => sendTrayPlayerAction('next'),
+    },
+    { type: 'separator' },
+    { label: '退出', click: () => requestAppQuit() },
+  ])
+
+  tray.setContextMenu(contextMenu)
+}
+
+function updateMacDockMenu() {
+  if (!isMac || !app.dock) return
+
+  const empty = playerMediaState.empty
+  const playLabel = playerMediaState.isPlaying ? '暂停' : '播放'
+
+  const dockMenu = Menu.buildFromTemplate([
+    {
+      label: playLabel,
+      enabled: !empty,
+      click: () => sendTrayPlayerAction('play-pause'),
+    },
+    {
+      label: '上一首',
+      enabled: !empty,
+      click: () => sendTrayPlayerAction('previous'),
+    },
+    {
+      label: '下一首',
+      enabled: !empty,
+      click: () => sendTrayPlayerAction('next'),
+    },
+  ])
+
+  app.dock.setMenu(dockMenu)
+}
+
+function updateTrayTooltip() {
+  if (!tray) return
+  if (playerMediaState.empty || !playerMediaState.title) {
+    tray.setToolTip('Sollin')
+    return
+  }
+  const title = playerMediaState.title.length > 40
+    ? `${playerMediaState.title.slice(0, 40)}...`
+    : playerMediaState.title
+  const artist = playerMediaState.artist
+    ? playerMediaState.artist.length > 40
+      ? `${playerMediaState.artist.slice(0, 40)}...`
+      : playerMediaState.artist
+    : ''
+  tray.setToolTip(artist ? `Sollin\n${title}\n${artist}` : `Sollin\n${title}`)
+}
+
+function applyPlayerMediaState(partial: Partial<PlayerMediaState>) {
+  const next: PlayerMediaState = { ...playerMediaState, ...partial }
+  const changed =
+    next.title !== playerMediaState.title ||
+    next.artist !== playerMediaState.artist ||
+    next.isPlaying !== playerMediaState.isPlaying ||
+    next.empty !== playerMediaState.empty
+
+  playerMediaState = next
+  if (!changed) return
+
+  updateTrayTooltip()
+  updateTrayContextMenu()
+  setWindowsThumbarButtons()
+  updateMacDockMenu()
+}
+
 function createTray() {
   // Try to load tray icon from multiple possible paths
   let icon = nativeImage.createEmpty()
@@ -3028,18 +3213,9 @@ function createTray() {
 
   tray = new Tray(icon)
 
-  const contextMenu = Menu.buildFromTemplate([
-    { label: '显示主窗口', click: () => mainWindow?.show() },
-    { type: 'separator' },
-    { label: '播放/暂停', click: () => mainWindow?.webContents.send('tray:play-pause') },
-    { label: '上一首', click: () => mainWindow?.webContents.send('tray:previous') },
-    { label: '下一首', click: () => mainWindow?.webContents.send('tray:next') },
-    { type: 'separator' },
-    { label: '退出', click: () => requestAppQuit() },
-  ])
-
   tray.setToolTip('Sollin')
-  tray.setContextMenu(contextMenu)
+  updateTrayContextMenu()
+  updateMacDockMenu()
 
   tray.on('click', () => {
     mainWindow?.show()
@@ -3434,11 +3610,28 @@ function setupIpcHandlers() {
   ipcMain.handle('global-shortcuts:get-state', () => cloneGlobalShortcutState())
   ipcMain.handle('global-shortcuts:set-config', (_event, config: unknown) => applyGlobalShortcutConfig(config))
 
-  // Update tray tooltip
-  ipcMain.on('player:update-info', (_event, info: { title: string; artist: string }) => {
-    if (tray) {
-      tray.setToolTip(`${info.title} - ${info.artist}`)
-    }
+  // Update tray tooltip / thumbar / dock from renderer playback state
+  ipcMain.on('player:update-info', (_event, info: { title: string; artist: string; isPlaying?: boolean }) => {
+    const title = typeof info?.title === 'string' ? info.title : ''
+    const artist = typeof info?.artist === 'string' ? info.artist : ''
+    const hasSong = Boolean(title || artist)
+    applyPlayerMediaState({
+      title,
+      artist,
+      empty: !hasSong,
+      ...(typeof info?.isPlaying === 'boolean' ? { isPlaying: info.isPlaying } : {}),
+    })
+  })
+
+  ipcMain.on('player:update-state', (_event, state: { isPlaying?: boolean; empty?: boolean; title?: string; artist?: string }) => {
+    if (!state || typeof state !== 'object') return
+    const patch: Partial<PlayerMediaState> = {}
+    if (typeof state.isPlaying === 'boolean') patch.isPlaying = state.isPlaying
+    if (typeof state.empty === 'boolean') patch.empty = state.empty
+    if (typeof state.title === 'string') patch.title = state.title
+    if (typeof state.artist === 'string') patch.artist = state.artist
+    if (Object.keys(patch).length === 0) return
+    applyPlayerMediaState(patch)
   })
 
   ipcMain.on('debug:preload-ready', (_event, payload) => {

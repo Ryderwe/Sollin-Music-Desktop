@@ -803,11 +803,12 @@ export const usePlayerStore = create<PlayerStore>()(
         }
       }
 
-      const updateTrayInfo = (song: Song) => {
+      const updateTrayInfo = (song: Song, isPlaying?: boolean) => {
         if (!window.electronAPI) return
         window.electronAPI.updatePlayerInfo({
           title: song.name,
           artist: song.artist,
+          isPlaying: typeof isPlaying === 'boolean' ? isPlaying : get().isPlaying,
         })
       }
 
@@ -1153,7 +1154,7 @@ export const usePlayerStore = create<PlayerStore>()(
             useUserStore.getState().addToRecentlyPlayed(playbackSong)
             useUserStore.getState().addToPlayHistory(playbackSong)
             analytics.trackSongPlay(song.id, song.platform)
-            updateTrayInfo(song)
+            updateTrayInfo(song, true)
           }
 
           void loadLyricsForSong(song, requestId)
@@ -1548,11 +1549,12 @@ export const usePlayerStore = create<PlayerStore>()(
           // Track song play
           analytics.trackSongPlay(song.id, song.platform)
 
-          // Update electron tray
+          // Update electron tray / taskbar
           if (window.electronAPI) {
             window.electronAPI.updatePlayerInfo({
               title: song.name,
               artist: song.artist,
+              isPlaying: true,
             })
           }
         } catch (error) {

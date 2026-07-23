@@ -199,8 +199,12 @@ const electronAPI = {
   storeGetRootPath: () => ipcRenderer.invoke('store:getRootPath') as Promise<string>,
   storeOpenRootPath: () => ipcRenderer.invoke('store:openRootPath') as Promise<string>,
 
-  updatePlayerInfo: (info: { title: string; artist: string }) => {
+  updatePlayerInfo: (info: { title: string; artist: string; isPlaying?: boolean }) => {
     ipcRenderer.send('player:update-info', info)
+  },
+
+  updatePlayerState: (state: { isPlaying?: boolean; empty?: boolean; title?: string; artist?: string }) => {
+    ipcRenderer.send('player:update-state', state)
   },
 
   onPlayPause: (callback: () => void) => {
@@ -385,7 +389,8 @@ declare global {
       storeOpenRootPath: () => Promise<string>
       getGlobalShortcutState: () => Promise<GlobalShortcutState>
       setGlobalShortcutConfig: (config: GlobalShortcutConfig) => Promise<GlobalShortcutState>
-      updatePlayerInfo: (info: { title: string; artist: string }) => void
+      updatePlayerInfo: (info: { title: string; artist: string; isPlaying?: boolean }) => void
+      updatePlayerState: (state: { isPlaying?: boolean; empty?: boolean; title?: string; artist?: string }) => void
       onPlayPause: (callback: () => void) => () => void
       onPrevious: (callback: () => void) => () => void
       onNext: (callback: () => void) => () => void

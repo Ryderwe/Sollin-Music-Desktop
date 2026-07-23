@@ -504,6 +504,17 @@ function App() {
     }
   }, [])
 
+  // Keep system tray / Windows thumbar / macOS dock menu in sync with playback
+  useEffect(() => {
+    if (!window.electronAPI?.updatePlayerState) return
+    window.electronAPI.updatePlayerState({
+      isPlaying,
+      empty: !currentSong,
+      title: currentSong?.name || '',
+      artist: currentSong?.artist || '',
+    })
+  }, [currentSong, isPlaying])
+
   return (
     <>
       {/* Hidden audio element */}

@@ -72,7 +72,8 @@ declare global {
           }
         }
       }>
-      updatePlayerInfo: (info: { title: string; artist: string }) => void
+      updatePlayerInfo: (info: { title: string; artist: string; isPlaying?: boolean }) => void
+      updatePlayerState: (state: { isPlaying?: boolean; empty?: boolean; title?: string; artist?: string }) => void
       onPlayPause: (callback: () => void) => () => void
       onPrevious: (callback: () => void) => () => void
       onNext: (callback: () => void) => () => void
