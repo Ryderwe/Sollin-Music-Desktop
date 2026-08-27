@@ -34,6 +34,7 @@ import {
   Settings as SettingsIcon,
   Image,
   Type,
+  TestTube2,
 } from 'lucide-react'
 import { useUserStore } from '@/stores/userStore'
 import {
@@ -60,6 +61,7 @@ import { cn } from '@/utils/cn'
 import ImageCropModal from '@/components/modals/ImageCropModal'
 import UpdateModal from '@/components/modals/UpdateModal'
 import { QUALITY_NAMES, QUALITY_OPTIONS } from '@/constants/audio'
+import { api } from '@/services/api'
 import {
   APP_VERSION,
   GITHUB_ANNOUNCEMENT_AUTHOR,
@@ -568,6 +570,9 @@ export default function Settings() {
   const [expandedLxSourceIds, setExpandedLxSourceIds] = useState<string[]>([])
   const [isLxSourceExpanded, setIsLxSourceExpanded] = useState(false)
   const [isPickingLxSourcePath, setIsPickingLxSourcePath] = useState(false)
+  const [sourceTestKeyword, setSourceTestKeyword] = useState('晴天')
+  const [sourceTestRunning, setSourceTestRunning] = useState(false)
+  const [sourceTestResults, setSourceTestResults] = useState<Record<string, Array<{ platform: string; label: string; status: 'ok' | 'failed'; detail: string }>>>({})
 
   const electronApi = typeof window !== 'undefined' ? window.electronAPI : undefined
   const hasElectronApi = Boolean(electronApi)
@@ -902,6 +907,36 @@ export default function Settings() {
     setExpandedLxSourceIds((current) => current.includes(sourceId)
       ? current.filter((id) => id !== sourceId)
       : [...current, sourceId])
+  }
+
+  const handleTestLxSource = async (source: LxManagedSource) => {
+    if (sourceTestRunning || !sourceTestKeyword.trim()) return
+    setSourceTestRunning(true)
+    setSourceTestResults((current) => ({ ...current, [source.id]: [] }))
+    try {
+      const sourcePlatforms = (Object.keys(lxSourceStatus?.supportedSources || {}) as Array<'wy' | 'tx' | 'kw' | 'kg' | 'mg'>)
+        .filter((item) => lxSourceStatus?.supportedSources[item]?.actions.includes('musicUrl'))
+      if (!sourcePlatforms.length) throw new Error('该音源未声明播放链接接口')
+      const platformMap = { wy: 'netease', tx: 'qq', kw: 'kuwo', kg: 'kugou', mg: 'migu' } as const
+      const labels = { wy: '网易云', tx: 'QQ音乐', kw: '酷我', kg: '酷狗', mg: '咪咕' } as const
+      for (const sourcePlatform of sourcePlatforms) {
+        const platform = platformMap[sourcePlatform]
+        try {
+          const search = await api.search(platform, sourceTestKeyword.trim(), 1, 1)
+          const song = search.songs[0]
+          if (!song) throw new Error('未找到测试歌曲')
+          const result = await lxSourceApi.checkAvailability(source.id, song, QUALITY_OPTIONS.map((item) => item.id))
+          const available = result.qualities.filter((item) => item.available).map((item) => QUALITY_NAMES[item.quality as keyof typeof QUALITY_NAMES]).join('、') || '无可用音质'
+          setSourceTestResults((current) => ({ ...current, [source.id]: [...(current[source.id] || []), { platform: sourcePlatform, label: labels[sourcePlatform], status: result.available ? 'ok' : 'failed', detail: `${result.song} · ${available}` }] }))
+        } catch (error) {
+          setSourceTestResults((current) => ({ ...current, [source.id]: [...(current[source.id] || []), { platform: sourcePlatform, label: labels[sourcePlatform], status: 'failed', detail: error instanceof Error ? error.message : String(error) }] }))
+        }
+      }
+    } catch (error) {
+      setSourceTestResults((current) => ({ ...current, [source.id]: [{ platform: '', label: '测试', status: 'failed', detail: error instanceof Error ? error.message : String(error) }] }))
+    } finally {
+      setSourceTestRunning(false)
+    }
   }
 
   useEffect(() => {
@@ -2016,6 +2051,14 @@ export default function Settings() {
 
                             <div className="flex flex-wrap items-center gap-2">
                               <button
+                                onClick={() => void handleTestLxSource(source)}
+                                disabled={sourceTestRunning || !source.exists}
+                                className="px-3 py-1.5 rounded-lg text-sm bg-violet-500 text-white hover:bg-violet-600 transition-colors disabled:opacity-60 inline-flex items-center gap-1.5"
+                              >
+                                <TestTube2 className="w-4 h-4" />
+                                {sourceTestRunning ? '测试中...' : '可用性测试'}
+                              </button>
+                              <button
                                 onClick={() => void handleSetActiveLxSource(source)}
                                 disabled={source.isActive || !source.exists || isBusy}
                                 className={cn(
@@ -2044,6 +2087,18 @@ export default function Settings() {
                               </button>
                             </div>
                           </div>
+
+                          {source.isActive && (
+                            <div className="mt-3 space-y-3 rounded-xl border border-violet-200/70 bg-violet-50/50 p-3 dark:border-violet-800/50 dark:bg-violet-950/20">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <input value={sourceTestKeyword} onChange={(event) => setSourceTestKeyword(event.target.value)} placeholder="测试歌曲关键词" className="input flex-1 min-w-[180px] text-sm" />
+                                <span className="text-xs text-[var(--text-muted)]">将测试该音源声明的所有平台</span>
+                              </div>
+                              {sourceTestResults[source.id]?.length > 0 && <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                                {sourceTestResults[source.id].map((item) => <div key={item.platform} className={cn('rounded-lg border px-3 py-2 text-sm', item.status === 'ok' ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-800/50 dark:bg-green-950/20 dark:text-green-300' : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800/50 dark:bg-red-950/20 dark:text-red-300')}><div className="font-medium">{item.status === 'ok' ? '✓' : '✕'} {item.label}</div><div className="mt-1 text-xs break-words opacity-90">{item.detail}</div></div>)}
+                              </div>}
+                            </div>
+                          )}
 
                           {isDetailExpanded && (
                             <>

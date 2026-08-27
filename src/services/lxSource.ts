@@ -56,6 +56,14 @@ export interface LxSourceStatus {
   lastError: string | null
 }
 
+export interface LxSourceAvailabilityResult {
+  platform: SongPlatform
+  song: string
+  available: boolean
+  qualities: Array<{ quality: string; available: boolean; error?: string }>
+  error?: string
+}
+
 const createUnavailableStatus = (): LxSourceStatus => ({
   available: false,
   activeSourceId: null,
@@ -292,6 +300,21 @@ class LxSourceService {
       url,
       quality: normalizeResultQuality(result, quality),
     }
+  }
+
+  async checkAvailability(sourceId: string, song: Song, qualities: AudioQuality[]): Promise<LxSourceAvailabilityResult> {
+    const result: LxSourceAvailabilityResult = { platform: song.platform, song: `${song.name} - ${song.artist}`, available: false, qualities: [] }
+    for (const quality of qualities) {
+      try {
+        const resolved = await this.getSongUrl(song, quality, { sourceId })
+        if (!resolved?.url) throw new Error('未返回播放链接')
+        result.qualities.push({ quality, available: true })
+      } catch (error) {
+        result.qualities.push({ quality, available: false, error: error instanceof Error ? error.message : String(error) })
+      }
+    }
+    result.available = result.qualities.some((item) => item.available)
+    return result
   }
 }
 
