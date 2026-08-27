@@ -13,6 +13,8 @@ declare global {
       isMaximized: () => Promise<boolean>
       getPlatform: () => Promise<string>
       getVersion: () => Promise<string>
+      getCacheDirectory: () => Promise<string>
+      pickCacheDirectory: () => Promise<string | null>
       storeGet: (name: string) => Promise<unknown | null>
       storeGetSync: (name: string) => unknown | null
       storeSet: (name: string, value: unknown) => Promise<{ ok: boolean; error?: string }>

@@ -167,6 +167,23 @@ export function initializeSollinDataRoot(): string {
   ensureDir(getStoreDir())
   ensureDir(getFontsDir())
 
+  // Honour a user-selected cache location before Chromium creates its cache
+  // directories.  Paths are normalized per-platform by Node/Electron.
+  try {
+    const configured = readDoc('cache-directory')
+    const selected = configured && typeof configured === 'object' && typeof (configured as any).path === 'string'
+      ? path.resolve((configured as any).path)
+      : null
+    if (selected) {
+      ensureDir(selected)
+      // Electron exposes sessionData (the Chromium cache root) consistently
+      // on both macOS and Windows; appData/userData remain untouched.
+      app.setPath('sessionData', selected)
+    }
+  } catch (error) {
+    console.warn('[appDataStore] custom cache directory unavailable:', error)
+  }
+
   migrateLegacyUserDataIfNeeded()
   initialized = true
   console.log('[appDataStore] data root:', SOLLIN_HOME)

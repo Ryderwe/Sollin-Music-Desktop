@@ -3688,6 +3688,20 @@ function setupIpcHandlers() {
   // System info
   ipcMain.handle('system:platform', () => process.platform)
   ipcMain.handle('system:version', () => app.getVersion())
+  ipcMain.handle('cache:get-directory', () => {
+    const stored = readDoc('cache-directory')
+    if (typeof stored === 'object' && stored && typeof (stored as any).path === 'string') return (stored as any).path
+    return path.join(app.getPath('sessionData'), 'sollin-data')
+  })
+  ipcMain.handle('cache:pick-directory', async() => {
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, { title: process.platform === 'win32' ? '选择缓存目录' : '选择缓存目录（macOS）', properties: ['openDirectory'] })
+      : await dialog.showOpenDialog({ title: '选择缓存目录', properties: ['openDirectory'] })
+    if (result.canceled || !result.filePaths[0]) return null
+    const selected = path.resolve(result.filePaths[0])
+    writeDoc('cache-directory', { path: selected, platform: process.platform }, { immediate: true })
+    return selected
+  })
   ipcMain.handle('global-shortcuts:get-state', () => cloneGlobalShortcutState())
   ipcMain.handle('global-shortcuts:set-config', (_event, config: unknown) => applyGlobalShortcutConfig(config))
 

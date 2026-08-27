@@ -538,6 +538,7 @@ export default function Settings() {
   const [audioCacheEnabled, setAudioCacheEnabled] = useState(audioCache.getSettings().enabled)
   const [audioCacheLimitMB, setAudioCacheLimitMB] = useState(audioCache.getSettings().maxSizeMB)
   const [audioCacheStats, setAudioCacheStats] = useState<{ count: number; totalSize: number }>({ count: 0, totalSize: 0 })
+  const [cacheDirectory, setCacheDirectory] = useState('')
   const [dataSyncStatus, setDataSyncStatus] = useState<DataSyncStatus>(() => dataSyncService.getStatus())
   const [dataSyncClientHost, setDataSyncClientHost] = useState('')
   const [dataSyncConnectionCodeInput, setDataSyncConnectionCodeInput] = useState('')
@@ -942,6 +943,18 @@ export default function Settings() {
   useEffect(() => {
     void refreshLxSourceStatus(true)
   }, [])
+
+  useEffect(() => {
+    void electronApi?.getCacheDirectory?.().then((value) => setCacheDirectory(value)).catch(() => undefined)
+  }, [electronApi])
+
+  const handlePickCacheDirectory = async () => {
+    const selected = await electronApi?.pickCacheDirectory?.()
+    if (selected) {
+      setCacheDirectory(selected)
+      addToast({ type: 'success', message: '缓存目录已更新，重启后完全生效' })
+    }
+  }
 
   useEffect(() => {
     setDislikeRulesDraft(dislikeRules)
@@ -2853,6 +2866,16 @@ export default function Settings() {
           <p className="text-xs text-[var(--text-muted)] text-center">
             当前上限 {dataCacheLimitMB} MB；超过上限时会自动删除最旧的数据缓存
           </p>
+          <div className="flex flex-col gap-2 rounded-xl bg-gray-50 p-3 dark:bg-gray-800/50">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">数据缓存目录</p>
+                <p className="text-xs text-[var(--text-muted)]">macOS 和 Windows 均支持选择自定义目录，重启应用后完全生效</p>
+              </div>
+              <button onClick={() => void handlePickCacheDirectory()} className="shrink-0 rounded-xl bg-gray-200 px-3 py-2 text-sm hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">选择目录</button>
+            </div>
+            <p className="break-all rounded-lg bg-black/5 px-2 py-1 text-xs font-mono text-[var(--text-muted)] dark:bg-white/5">{cacheDirectory || '使用系统默认缓存目录'}</p>
+          </div>
         </div>
       </section>
 

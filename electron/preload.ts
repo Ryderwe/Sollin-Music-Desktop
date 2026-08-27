@@ -193,6 +193,8 @@ const electronAPI = {
 
   getPlatform: () => ipcRenderer.invoke('system:platform'),
   getVersion: () => ipcRenderer.invoke('system:version'),
+  getCacheDirectory: () => ipcRenderer.invoke('cache:get-directory') as Promise<string>,
+  pickCacheDirectory: () => ipcRenderer.invoke('cache:pick-directory') as Promise<string | null>,
   getGlobalShortcutState: () => ipcRenderer.invoke('global-shortcuts:get-state'),
   setGlobalShortcutConfig: (config: GlobalShortcutConfig) => ipcRenderer.invoke('global-shortcuts:set-config', config),
 
