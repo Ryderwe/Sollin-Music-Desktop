@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Trash2, Play, HardDrive, FolderOpen, RefreshCw, ChevronDown, Settings2 } from 'lucide-react'
+import { Trash2, Play, HardDrive, FolderOpen, RefreshCw, ChevronDown, Settings2, Search, X } from 'lucide-react'
 import { useLocalMusicStore } from '@/stores/localMusicStore'
 import VirtualSongList from '@/components/VirtualSongList'
 import { usePlayerStore } from '@/stores/playerStore'
@@ -136,7 +136,14 @@ export default function Library() {
   const localMusicStore = useLocalMusicStore()
   const { songs: localSongs, folders, isScanning, lastScannedAt, pickFolders, rescanFolders, removeFolder } = localMusicStore
   const [songSort, setSongSort] = useState<LocalSongSort>(() => readLocalSongSort())
-  const sortedLocalSongs = useMemo(() => sortLocalSongs(localSongs, songSort), [songSort, localSongs])
+  const [songSearch, setSongSearch] = useState('')
+  const filteredLocalSongs = useMemo(() => {
+    const query = songSearch.trim().toLocaleLowerCase('zh-CN')
+    if (!query) return localSongs
+    return localSongs.filter((song) => [song.name, song.artist, song.album]
+      .some((value) => value?.toLocaleLowerCase('zh-CN').includes(query)))
+  }, [localSongs, songSearch])
+  const sortedLocalSongs = useMemo(() => sortLocalSongs(filteredLocalSongs, songSort), [songSort, filteredLocalSongs])
 
   const handlePlayLocalMusic = () => {
     if (sortedLocalSongs.length > 0) {
@@ -228,13 +235,24 @@ export default function Library() {
       </header>
 
       {/* Sort control and songs list */}
-      {sortedLocalSongs.length > 0 ? (
+      {localSongs.length > 0 ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-[var(--text-muted)]">
               共 {sortedLocalSongs.length} 首歌曲
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
+                <input
+                  value={songSearch}
+                  onChange={(event) => setSongSearch(event.target.value)}
+                  placeholder="搜索歌曲、歌手或专辑"
+                  aria-label="搜索本地歌曲"
+                  className="w-56 rounded-xl border border-black/10 bg-black/5 py-2 pl-9 pr-8 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-violet-400/70 dark:border-white/10 dark:bg-white/10 dark:focus:bg-white/15"
+                />
+                {songSearch && <button type="button" onClick={() => setSongSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]" aria-label="清除搜索"><X className="h-4 w-4" /></button>}
+              </div>
               <span className="text-sm text-[var(--text-muted)]">排序</span>
               <div className="relative">
                 <select
@@ -243,7 +261,7 @@ export default function Library() {
                   className="min-w-[160px] appearance-none rounded-xl border border-black/10 bg-black/5 py-2 pl-3 pr-10 text-sm font-medium text-[var(--text-secondary)] outline-none backdrop-blur-xl transition-colors hover:bg-black/10 focus:border-primary-400/70 focus:bg-white/70 dark:border-white/10 dark:bg-white/10 dark:text-[var(--text-primary)] dark:hover:bg-white/15 dark:focus:border-primary-400/60 dark:focus:bg-white/15 [color-scheme:light] dark:[color-scheme:dark]"
                 >
                   {LOCAL_SONG_SORT_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
+                    <option className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white" key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
@@ -254,13 +272,13 @@ export default function Library() {
           </div>
 
           <div>
-            <VirtualSongList
+            {sortedLocalSongs.length > 0 ? <VirtualSongList
               songs={sortedLocalSongs}
               playlistId="local-library"
               playlistName="本地音乐"
               showPlatform={false}
               scrollable={false}
-            />
+            /> : <div className="py-12 text-center text-[var(--text-muted)]"><Search className="mx-auto mb-3 h-8 w-8 opacity-60" /><p>没有找到匹配的本地歌曲</p></div>}
           </div>
         </div>
       ) : (

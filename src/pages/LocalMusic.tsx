@@ -9,6 +9,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Search,
   SlidersHorizontal,
   Users,
   X,
@@ -237,6 +238,7 @@ export default function LocalMusic() {
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null)
   const [selectedArtistId, setSelectedArtistId] = useState<string | null>(null)
   const [songSort, setSongSort] = useState<LocalSongSort>(() => readLocalSongSort())
+  const [songSearch, setSongSearch] = useState('')
 
   const topSummary = useMemo(() => {
     if (isScanning) return '正在扫描目录'
@@ -245,7 +247,13 @@ export default function LocalMusic() {
     return `${songs.length} 首歌`
   }, [folders.length, isScanning, songs.length])
 
-  const sortedSongs = useMemo(() => sortLocalSongs(songs, songSort), [songSort, songs])
+  const filteredSongs = useMemo(() => {
+    const query = songSearch.trim().toLocaleLowerCase('zh-CN')
+    if (!query) return songs
+    return songs.filter((song) => [song.name, song.artist, song.album]
+      .some((value) => value?.toLocaleLowerCase('zh-CN').includes(query)))
+  }, [songSearch, songs])
+  const sortedSongs = useMemo(() => sortLocalSongs(filteredSongs, songSort), [songSort, filteredSongs])
 
   const albumGroups = useMemo(() => {
     const groups = new Map<string, LocalAlbumGroup>()
@@ -607,10 +615,21 @@ export default function LocalMusic() {
             songs.length > 0 ? (
               <div>
                 <div className="mb-4 flex flex-col gap-3 rounded-2xl bg-black/5 px-4 py-3 dark:bg-white/5 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-[var(--text-muted)]">
+                    <p className="text-sm text-[var(--text-muted)]">
                     当前共 {sortedSongs.length} 首歌曲，播放全部会按照这里的排序顺序开始播放。
                   </p>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
+                      <input
+                        value={songSearch}
+                        onChange={(event) => setSongSearch(event.target.value)}
+                        placeholder="搜索歌曲、歌手或专辑"
+                        aria-label="搜索本地歌曲"
+                        className="w-56 rounded-xl border border-black/10 bg-black/5 py-2 pl-9 pr-8 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-violet-400/70 dark:border-white/10 dark:bg-white/10 dark:focus:bg-white/15"
+                      />
+                      {songSearch && <button type="button" onClick={() => setSongSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)]" aria-label="清除搜索"><X className="h-4 w-4" /></button>}
+                    </div>
                     <span className="text-sm text-[var(--text-muted)]">排序</span>
                     <div className="relative">
                       <select
@@ -619,7 +638,7 @@ export default function LocalMusic() {
                         className="min-w-[180px] appearance-none rounded-xl border border-black/10 bg-black/5 py-2 pl-3 pr-10 text-sm font-medium text-[var(--text-secondary)] outline-none backdrop-blur-xl transition-colors hover:bg-black/10 focus:border-violet-400/70 focus:bg-white/70 dark:border-white/10 dark:bg-white/10 dark:text-[var(--text-primary)] dark:hover:bg-white/15 dark:focus:border-violet-400/60 dark:focus:bg-white/15 [color-scheme:light] dark:[color-scheme:dark]"
                       >
                         {LOCAL_SONG_SORT_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
+                          <option className="bg-white text-gray-900 dark:bg-gray-800 dark:text-white" key={option.value} value={option.value}>
                             {option.label}
                           </option>
                         ))}
@@ -630,7 +649,12 @@ export default function LocalMusic() {
                 </div>
 
                 <div className="space-y-1">
-                  {sortedSongs.map((song, index) => (
+                  {sortedSongs.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-gray-300/80 px-6 py-12 text-center text-[var(--text-muted)] dark:border-gray-700">
+                      <Search className="mx-auto mb-3 h-8 w-8 opacity-60" />
+                      <p>没有找到匹配的本地歌曲</p>
+                    </div>
+                  ) : sortedSongs.map((song, index) => (
                     <SongRow
                       key={`${song.id}-${song.platform}`}
                       song={song}
