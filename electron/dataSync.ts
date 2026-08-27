@@ -20,6 +20,7 @@ import {
   createDefaultDataSyncConfig,
 } from './dataSyncShared'
 import { DataSyncLxCompatBridge, DataSyncLxCompatClient } from './dataSyncLxCompat'
+import { readDoc, writeDoc } from './appDataStore'
 
 type SyncPeer = WebSocket & {
   deviceInfo?: DataSyncDeviceInfo
@@ -176,6 +177,8 @@ const getSyncStatePath = () => path.join(app.getPath('userData'), DATA_SYNC_STAT
 const getLocalDeviceId = () => {
   const persistedPath = path.join(app.getPath('userData'), 'data-sync-device.json')
   try {
+    const stored = readDoc('data-sync-device') as { deviceId?: string } | null
+    if (stored?.deviceId?.trim()) return stored.deviceId
     if (fs.existsSync(persistedPath)) {
       const parsed = JSON.parse(fs.readFileSync(persistedPath, 'utf8'))
       if (typeof parsed?.deviceId === 'string' && parsed.deviceId.trim()) {
@@ -186,7 +189,7 @@ const getLocalDeviceId = () => {
 
   const deviceId = randomBytes(16).toString('hex')
   try {
-    fs.writeFileSync(persistedPath, JSON.stringify({ deviceId }, null, 2))
+    writeDoc('data-sync-device', { deviceId }, { immediate: true })
   } catch {}
   return deviceId
 }
@@ -234,6 +237,15 @@ const readPersistedState = (): PersistedDataSyncState => {
   }
 
   try {
+    const stored = readDoc('data-sync-state')
+    if (stored && isRecord(stored)) {
+      const parsed = stored as Partial<PersistedDataSyncState>
+      return {
+        config: { ...defaultConfig, ...(isRecord(parsed.config) ? parsed.config as Partial<DataSyncConfig> : {}), serverPort: normalizePort(parsed.config?.serverPort), conflictResolutionMode: normalizeConflictResolutionMode(parsed.config?.conflictResolutionMode) },
+        revision: Number.isFinite(parsed.revision) ? Number(parsed.revision) : 0,
+        snapshot: parsed.snapshot && isRecord(parsed.snapshot) ? cloneSnapshot({ ...createDefaultSnapshot(), ...parsed.snapshot } as DataSyncSnapshotData) : null,
+      }
+    }
     const filePath = getSyncStatePath()
     if (!fs.existsSync(filePath)) return fallback
     const raw = fs.readFileSync(filePath, 'utf8').trim()
@@ -271,7 +283,7 @@ const writePersistedState = () => {
     snapshot: currentSnapshot ? cloneSnapshot(currentSnapshot.data) : null,
   }
 
-  fs.promises.writeFile(getSyncStatePath(), JSON.stringify(state, null, 2)).catch((error) => {
+  Promise.resolve().then(() => writeDoc('data-sync-state', state)).catch((error) => {
     console.warn('[data-sync] persist failed:', error)
   })
 }

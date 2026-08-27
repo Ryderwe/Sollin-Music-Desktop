@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { readDoc, writeDoc } from './appDataStore'
 import path from 'path'
 import fs from 'fs'
 import { createHash } from 'crypto'
@@ -220,6 +221,19 @@ const loadConfiguredScriptPath = () => {
   allowShowUpdateAlert = true
 
   try {
+    const stored = readDoc('lx-source-config')
+    if (stored && typeof stored === 'object') {
+      const parsed = stored as LxSourceConfig
+      activeSourceId = parsed.activeSourceId || null
+      managedSources = Array.isArray(parsed.sources)
+        ? parsed.sources.map((source) => normalizeManagedSourceRecord(source)).filter((source): source is ManagedLxSourceConfig => Boolean(source))
+        : []
+      configuredScriptPath = parsed.scriptPath || null
+      configuredScriptUrl = parsed.scriptUrl || null
+      allowShowUpdateAlert = parsed.allowShowUpdateAlert !== false
+      syncConfiguredSourceMirror()
+      return
+    }
     const configPath = getConfigPath()
     if (!fs.existsSync(configPath)) {
       syncConfiguredSourceMirror()
@@ -275,13 +289,13 @@ const loadConfiguredScriptPath = () => {
 const saveConfiguredScriptPath = () => {
   try {
     syncConfiguredSourceMirror()
-    fs.writeFileSync(getConfigPath(), JSON.stringify({
+    writeDoc('lx-source-config', {
       activeSourceId,
       sources: managedSources,
       scriptPath: configuredScriptPath,
       scriptUrl: configuredScriptUrl,
       allowShowUpdateAlert,
-    }, null, 2))
+    }, { immediate: true })
   } catch (error) {
     console.warn('Save LX source config failed:', error)
   }

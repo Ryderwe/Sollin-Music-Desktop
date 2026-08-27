@@ -30,7 +30,7 @@ import {
   AsfTag,
   ApeTag,
 } from 'node-taglib-sharp'
-import { flushPendingWrites, initializeSollinDataRoot, setupAppDataStoreIpc } from './appDataStore'
+import { flushPendingWrites, initializeSollinDataRoot, setupAppDataStoreIpc, readDoc, writeDoc } from './appDataStore'
 import { setupLxSourceIpcHandlers, initializeLxSourceRuntime, disposeLxSourceRuntime } from './lxSourceRuntime'
 import { initializeDataSyncRuntime, disposeDataSyncRuntime, setupDataSyncIpcHandlers } from './dataSync'
 
@@ -210,7 +210,15 @@ function loadDesktopLyricsState(): DesktopLyricsState {
   desktopLyricsStateLoaded = true
   try {
     const statePath = getDesktopLyricsStatePath()
-    if (fs.existsSync(statePath)) {
+    const stored = readDoc('desktop-lyrics')
+    if (stored && typeof stored === 'object') {
+        const parsed = stored as DesktopLyricsState
+        if (parsed?.bounds) desktopLyricsBounds = parsed.bounds
+        if (typeof parsed?.enabled === 'boolean') desktopLyricsEnabled = parsed.enabled
+        if (typeof parsed?.menuBarEnabled === 'boolean') menuBarLyricsEnabled = parsed.menuBarEnabled
+        if (typeof parsed?.alwaysOnTop === 'boolean') desktopLyricsAlwaysOnTop = parsed.alwaysOnTop
+        if (typeof parsed?.locked === 'boolean') desktopLyricsLocked = parsed.locked
+    } else if (fs.existsSync(statePath)) {
       const raw = fs.readFileSync(statePath, 'utf8').trim()
       if (raw) {
         const parsed = JSON.parse(raw) as DesktopLyricsState
@@ -256,13 +264,13 @@ function writeDesktopLyricsStateNow(sync = false) {
   }
   if (sync) {
     try {
-      fs.writeFileSync(statePath, JSON.stringify(state))
+      writeDoc('desktop-lyrics', state, { immediate: true })
     } catch (error) {
       console.warn('Save desktop lyrics state failed:', error)
     }
     return
   }
-  fs.promises.writeFile(statePath, JSON.stringify(state)).catch((error) => {
+  Promise.resolve().then(() => writeDoc('desktop-lyrics', state)).catch((error) => {
     console.warn('Save desktop lyrics state failed:', error)
   })
 }
@@ -462,6 +470,8 @@ function getPlayerStatePath() {
 function loadPlayerState(): PersistedPlayerState | null {
   try {
     const statePath = getPlayerStatePath()
+    const stored = readDoc('player-state')
+    if (stored && typeof stored === 'object') return stored as PersistedPlayerState
     if (!fs.existsSync(statePath)) return null
     const raw = fs.readFileSync(statePath, 'utf8')
     return JSON.parse(raw) as PersistedPlayerState
@@ -472,8 +482,7 @@ function loadPlayerState(): PersistedPlayerState | null {
 }
 
 function savePlayerState(state: PersistedPlayerState) {
-  const statePath = getPlayerStatePath()
-  fs.promises.writeFile(statePath, JSON.stringify(state)).catch((error) => {
+  Promise.resolve().then(() => writeDoc('player-state', state)).catch((error) => {
     console.warn('Save player state failed:', error)
   })
 }
@@ -533,6 +542,8 @@ function normalizeGlobalShortcutConfig(value: unknown): GlobalShortcutConfig {
 function loadGlobalShortcutConfig(): GlobalShortcutConfig {
   try {
     const statePath = getGlobalShortcutStatePath()
+    const stored = readDoc('global-shortcuts')
+    if (stored) return normalizeGlobalShortcutConfig(stored)
     if (!fs.existsSync(statePath)) {
       return cloneGlobalShortcutConfig(DEFAULT_GLOBAL_SHORTCUTS)
     }
@@ -550,8 +561,7 @@ function loadGlobalShortcutConfig(): GlobalShortcutConfig {
 }
 
 function saveGlobalShortcutConfig(config: GlobalShortcutConfig) {
-  const statePath = getGlobalShortcutStatePath()
-  fs.promises.writeFile(statePath, JSON.stringify(config)).catch((error) => {
+  Promise.resolve().then(() => writeDoc('global-shortcuts', config)).catch((error) => {
     console.warn('Save global shortcut config failed:', error)
   })
 }
@@ -2735,6 +2745,15 @@ function loadWindowState(): WindowState | null {
   mainWindowStateLoaded = true
   try {
     const statePath = getWindowStatePath()
+    const stored = readDoc('window-state')
+    if (stored && typeof stored === 'object') {
+      const parsed = stored as WindowState
+      if (parsed?.bounds) mainWindowBounds = parsed.bounds
+      if (typeof parsed?.alwaysOnTop === 'boolean') mainWindowAlwaysOnTop = parsed.alwaysOnTop
+      if (parsed?.miniBounds) mainWindowMiniBounds = parsed.miniBounds
+      if (typeof parsed?.opacity === 'number' && Number.isFinite(parsed.opacity)) mainWindowOpacity = Math.min(1, Math.max(0.35, parsed.opacity))
+      return parsed
+    }
     if (fs.existsSync(statePath)) {
       const raw = fs.readFileSync(statePath, 'utf8')
       const parsed = JSON.parse(raw) as WindowState
@@ -2771,7 +2790,7 @@ function saveWindowState() {
     miniBounds: mainWindowMiniBounds || undefined,
     opacity: mainWindowOpacity,
   }
-  fs.promises.writeFile(statePath, JSON.stringify(state)).catch((error) => {
+  Promise.resolve().then(() => writeDoc('window-state', state)).catch((error) => {
     console.warn('Save window state failed:', error)
   })
 }
