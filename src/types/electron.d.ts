@@ -14,8 +14,11 @@ declare global {
       getPlatform: () => Promise<string>
       getVersion: () => Promise<string>
       storeGet: (name: string) => Promise<unknown | null>
+      storeGetSync: (name: string) => unknown | null
       storeSet: (name: string, value: unknown) => Promise<{ ok: boolean; error?: string }>
+      storeSetSync: (name: string, value: unknown) => { ok: boolean; error?: string }
       storeRemove: (name: string) => Promise<{ ok: boolean; error?: string }>
+      storeRemoveSync: (name: string) => { ok: boolean; error?: string }
       storeGetMany: (names: string[]) => Promise<Record<string, unknown | null>>
       storeFlush: () => Promise<{ ok: boolean }>
       storeGetRootPath: () => Promise<string>

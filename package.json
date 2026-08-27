@@ -50,6 +50,7 @@
     "clsx": "^2.0.0",
     "crypto-js": "^4.2.0",
     "date-fns": "^2.30.0",
+    "electron-store": "^8.2.0",
     "fast-glob": "^3.3.3",
     "framer-motion": "^10.16.16",
     "gsap": "^3.15.0",

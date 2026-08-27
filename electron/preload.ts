@@ -198,8 +198,11 @@ const electronAPI = {
 
   // Persistent app data store (~/.sollin/store)
   storeGet: (name: string) => ipcRenderer.invoke('store:get', name) as Promise<unknown | null>,
+  storeGetSync: (name: string) => ipcRenderer.sendSync('store:get-sync', name) as unknown | null,
   storeSet: (name: string, value: unknown) => ipcRenderer.invoke('store:set', name, value) as Promise<{ ok: boolean; error?: string }>,
+  storeSetSync: (name: string, value: unknown) => ipcRenderer.sendSync('store:set-sync', name, value) as { ok: boolean; error?: string },
   storeRemove: (name: string) => ipcRenderer.invoke('store:remove', name) as Promise<{ ok: boolean; error?: string }>,
+  storeRemoveSync: (name: string) => ipcRenderer.sendSync('store:remove-sync', name) as { ok: boolean; error?: string },
   storeGetMany: (names: string[]) => ipcRenderer.invoke('store:getMany', names) as Promise<Record<string, unknown | null>>,
   storeFlush: () => ipcRenderer.invoke('store:flush') as Promise<{ ok: boolean }>,
   storeGetRootPath: () => ipcRenderer.invoke('store:getRootPath') as Promise<string>,
@@ -387,8 +390,11 @@ declare global {
       getPlatform: () => Promise<NodeJS.Platform>
       getVersion: () => Promise<string>
       storeGet: (name: string) => Promise<unknown | null>
+      storeGetSync: (name: string) => unknown | null
       storeSet: (name: string, value: unknown) => Promise<{ ok: boolean; error?: string }>
+      storeSetSync: (name: string, value: unknown) => { ok: boolean; error?: string }
       storeRemove: (name: string) => Promise<{ ok: boolean; error?: string }>
+      storeRemoveSync: (name: string) => { ok: boolean; error?: string }
       storeGetMany: (names: string[]) => Promise<Record<string, unknown | null>>
       storeFlush: () => Promise<{ ok: boolean }>
       storeGetRootPath: () => Promise<string>

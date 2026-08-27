@@ -1,4 +1,5 @@
 import { app, ipcMain, shell } from 'electron'
+import Store from 'electron-store'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -27,6 +28,7 @@ let initialized = false
 let oldUserDataPath: string | null = null
 const memoryCache = new Map<string, unknown>()
 const pendingWrites = new Map<string, PendingWrite>()
+const stores = new Map<string, Store<{ data?: unknown }>>()
 
 const isValidDocName = (name: unknown): name is string => (
   typeof name === 'string' && DOC_NAME_PATTERN.test(name)
@@ -50,6 +52,25 @@ function getMetaPath(): string {
 
 function getDocPath(name: string): string {
   return path.join(getStoreDir(), `${name}.json`)
+}
+
+/**
+ * Every logical document is backed by electron-store.  Keeping one store per
+ * document preserves the existing file layout (`store/<name>.json`) while
+ * giving us electron-store's atomic writes, corruption recovery and typed API.
+ */
+function getElectronStore(name: string): Store<{ data?: unknown }> {
+  let store = stores.get(name)
+  if (!store) {
+    store = new Store<{ data?: unknown }>({
+      name,
+      cwd: getStoreDir(),
+      fileExtension: 'json',
+      clearInvalidConfig: false,
+    })
+    stores.set(name, store)
+  }
+  return store
 }
 
 function ensureDir(dirPath: string) {
@@ -211,7 +232,15 @@ export function readDoc(name: string): unknown | null {
     return pending.value
   }
 
-  const value = readJsonFile<unknown>(getDocPath(name))
+  let value: unknown = null
+  try {
+    const rawStore = getElectronStore(name).store
+    value = Object.prototype.hasOwnProperty.call(rawStore, 'data') ? rawStore.data : rawStore
+  } catch (error) {
+    console.error('[appDataStore] electron-store read failed:', name, error)
+    // Keep compatibility with a partially written/legacy document.
+    value = readJsonFile<unknown>(getDocPath(name))
+  }
   if (value !== null) {
     memoryCache.set(name, value)
   }
@@ -220,7 +249,7 @@ export function readDoc(name: string): unknown | null {
 
 function writeDocImmediate(name: string, value: unknown) {
   memoryCache.set(name, value)
-  atomicWriteJson(getDocPath(name), value)
+  getElectronStore(name).set('data', value)
 }
 
 export function writeDoc(name: string, value: unknown, options?: { immediate?: boolean }) {
@@ -264,6 +293,8 @@ export function removeDoc(name: string) {
   memoryCache.delete(name)
   const filePath = getDocPath(name)
   try {
+    stores.get(name)?.clear()
+    stores.delete(name)
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
   } catch (error) {
     console.error('[appDataStore] remove failed:', filePath, error)
@@ -308,6 +339,9 @@ export function setupAppDataStoreIpc() {
     if (!isValidDocName(name)) return null
     return readDoc(name)
   })
+  ipcMain.on('store:get-sync', (event, name: unknown) => {
+    event.returnValue = isValidDocName(name) ? readDoc(name) : null
+  })
 
   ipcMain.handle('store:set', (_event, name: unknown, value: unknown) => {
     if (!isValidDocName(name)) {
@@ -323,6 +357,11 @@ export function setupAppDataStoreIpc() {
       }
     }
   })
+  ipcMain.on('store:set-sync', (event, name: unknown, value: unknown) => {
+    if (!isValidDocName(name)) { event.returnValue = { ok: false, error: 'invalid name' }; return }
+    try { writeDoc(name, value, { immediate: true }); event.returnValue = { ok: true } }
+    catch (error) { event.returnValue = { ok: false, error: error instanceof Error ? error.message : String(error) } }
+  })
 
   ipcMain.handle('store:remove', (_event, name: unknown) => {
     if (!isValidDocName(name)) {
@@ -330,6 +369,10 @@ export function setupAppDataStoreIpc() {
     }
     removeDoc(name)
     return { ok: true }
+  })
+  ipcMain.on('store:remove-sync', (event, name: unknown) => {
+    if (!isValidDocName(name)) { event.returnValue = { ok: false, error: 'invalid name' }; return }
+    removeDoc(name); event.returnValue = { ok: true }
   })
 
   ipcMain.handle('store:getMany', (_event, names: unknown) => {

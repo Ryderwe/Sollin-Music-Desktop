@@ -3,6 +3,7 @@
  */
 
 import { APP_VERSION } from '@/config'
+import { readAppDocSync, writeAppDocSync } from '@/services/persistentStorage'
 
 const STORAGE_KEY = 'sollin-analytics'
 
@@ -45,11 +46,11 @@ class AnalyticsService {
    * 生成或获取设备ID
    */
   private generateDeviceId(): string {
-    let deviceId = localStorage.getItem('sollin-device-id')
+    let deviceId = readAppDocSync<string | null>('sollin-device-id', null)
     if (!deviceId) {
       deviceId = 'device_' + Math.random().toString(36).substring(2, 15) + 
                  Math.random().toString(36).substring(2, 15)
-      localStorage.setItem('sollin-device-id', deviceId)
+      writeAppDocSync('sollin-device-id', deviceId)
     }
     return deviceId
   }
@@ -59,9 +60,9 @@ class AnalyticsService {
    */
   private loadData(): AnalyticsData {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
+      const stored = readAppDocSync<AnalyticsData | null>(STORAGE_KEY, null)
       if (stored) {
-        const data = JSON.parse(stored)
+        const data = stored
         // 更新版本号为当前版本
         data.version = APP_VERSION
         return data
@@ -96,7 +97,7 @@ class AnalyticsService {
    */
   private saveData(): void {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data))
+      writeAppDocSync(STORAGE_KEY, this.data)
     } catch (e) {
       console.error('Failed to save analytics data:', e)
     }

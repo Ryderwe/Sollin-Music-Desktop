@@ -13,8 +13,11 @@ type StoreSetResult = { ok: boolean; error?: string }
 
 type ElectronStoreApi = {
   storeGet: (name: string) => Promise<unknown | null>
+  storeGetSync?: (name: string) => unknown | null
   storeSet: (name: string, value: unknown) => Promise<StoreSetResult>
+  storeSetSync?: (name: string, value: unknown) => StoreSetResult
   storeRemove: (name: string) => Promise<StoreSetResult>
+  storeRemoveSync?: (name: string) => StoreSetResult
   storeFlush: () => Promise<{ ok: boolean }>
 }
 
@@ -405,6 +408,30 @@ export async function writeAppDoc(docName: string, value: unknown): Promise<bool
     return true
   } catch (error) {
     console.error(`[persistentStorage] writeAppDoc localStorage failed for ${docName}:`, error)
+    return false
+  }
+}
+
+export function readAppDocSync<T>(docName: string, fallback: T): T {
+  const api = getElectronStoreApi()
+  try {
+    const value = api?.storeGetSync ? api.storeGetSync(docName) : window.localStorage?.getItem(docName)
+    if (value == null) return fallback
+    if (typeof value === 'string') return JSON.parse(value) as T
+    if (typeof value === 'object' && value !== null && 'state' in value) return (value as StorageValue<T>).state as T
+    return value as T
+  } catch {
+    return fallback
+  }
+}
+
+export function writeAppDocSync(docName: string, value: unknown): boolean {
+  const api = getElectronStoreApi()
+  try {
+    if (api?.storeSetSync) return api.storeSetSync(docName, value).ok
+    window.localStorage?.setItem(docName, JSON.stringify(value))
+    return true
+  } catch {
     return false
   }
 }

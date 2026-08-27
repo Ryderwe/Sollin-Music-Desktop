@@ -23,6 +23,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { useUserStore } from '@/stores/userStore'
 import { cn } from '@/utils/cn'
 import { getOnlinePlaylistBrowsePath } from '@/utils/onlinePlaylistRoute'
+import { readAppDocSync, writeAppDocSync } from '@/services/persistentStorage'
 
 type PlaylistSection = 'custom' | 'local' | 'online'
 
@@ -44,9 +45,8 @@ const readNeteaseFoldState = (): NeteaseFoldState => {
   if (typeof window === 'undefined') return DEFAULT_NETEASE_FOLD_STATE
 
   try {
-    const raw = window.localStorage.getItem(NETEASE_SIDEBAR_FOLD_STORAGE_KEY)
-    if (!raw) return DEFAULT_NETEASE_FOLD_STATE
-    const parsed = JSON.parse(raw) as Partial<NeteaseFoldState>
+    const parsed = readAppDocSync<Partial<NeteaseFoldState> | null>(NETEASE_SIDEBAR_FOLD_STORAGE_KEY, null)
+    if (!parsed) return DEFAULT_NETEASE_FOLD_STATE
     return {
       root: typeof parsed.root === 'boolean' ? parsed.root : DEFAULT_NETEASE_FOLD_STATE.root,
       created: typeof parsed.created === 'boolean' ? parsed.created : DEFAULT_NETEASE_FOLD_STATE.created,
@@ -258,7 +258,7 @@ export default function Sidebar() {
     setNeteaseFoldState((current) => {
       const next = { ...current, [key]: !current[key] }
       try {
-        window.localStorage.setItem(NETEASE_SIDEBAR_FOLD_STORAGE_KEY, JSON.stringify(next))
+        writeAppDocSync(NETEASE_SIDEBAR_FOLD_STORAGE_KEY, next)
       } catch {
         // ignore
       }

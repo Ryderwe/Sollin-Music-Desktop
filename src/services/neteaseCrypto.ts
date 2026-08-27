@@ -5,6 +5,7 @@
 
 import CryptoJS from 'crypto-js'
 import forge from 'node-forge'
+import { readAppDocSync, writeAppDocSync } from '@/services/persistentStorage'
 
 // Constants
 const IV = '0102030405060708'
@@ -107,10 +108,10 @@ export function getCookie(): Record<string, string> {
 // Generate persistent anonymous token
 function getAnonymousToken(): string {
     const key = 'netease_anonymous_token'
-    let token = localStorage.getItem(key)
+    let token = readAppDocSync<string | null>(key, null)
     if (!token) {
         token = CryptoJS.lib.WordArray.random(32).toString()
-        localStorage.setItem(key, token)
+        writeAppDocSync(key, token)
     }
     return token
 }
@@ -118,10 +119,10 @@ function getAnonymousToken(): string {
 // Generate persistent device ID
 function getDeviceId(): string {
     const key = 'netease_device_id'
-    let id = localStorage.getItem(key)
+    let id = readAppDocSync<string | null>(key, null)
     if (!id) {
         id = CryptoJS.lib.WordArray.random(32).toString()
-        localStorage.setItem(key, id)
+        writeAppDocSync(key, id)
     }
     return id
 }

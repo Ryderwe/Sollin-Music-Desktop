@@ -1,5 +1,6 @@
 import { httpClient } from '@/services/httpClient'
 import type { WebDavBackupConfig, WebDavRemoteFile } from '@/types/backup'
+import { readAppDocSync, writeAppDocSync } from '@/services/persistentStorage'
 
 export const DEFAULT_WEBDAV_REMOTE_DIRECTORY = 'sollin_music_backups'
 const LEGACY_REMOTE_DIRECTORY = 'cyrene_music_backups'
@@ -7,14 +8,7 @@ const USER_AGENT = 'Microsoft-WebDAV-MiniRedir/10.0.22621'
 const WEBDAV_LOG_PREFIX = '[WebDAV]'
 const XML_PROPFIND_BODY = `<?xml version="1.0" encoding="utf-8"?>\n<d:propfind xmlns:d="DAV:">\n  <d:prop>\n    <d:displayname />\n    <d:getcontentlength />\n    <d:getlastmodified />\n    <d:getetag />\n    <d:resourcetype />\n  </d:prop>\n</d:propfind>`
 
-const STORAGE_KEYS = {
-  serverUrl: 'webdav_backup_url_v1',
-  username: 'webdav_backup_username_v1',
-  password: 'webdav_backup_password_v1',
-  remoteDirectory: 'webdav_backup_directory_v1',
-} as const
-
-const canUseStorage = () => typeof window !== 'undefined' && !!window.localStorage
+const canUseStorage = () => typeof window !== 'undefined'
 
 const encodeBase64Utf8 = (value: string) => {
   if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
@@ -262,12 +256,7 @@ export const getStoredWebDavConfig = (): WebDavBackupConfig => {
     return { serverUrl: '', username: '', password: '', remoteDirectory: DEFAULT_WEBDAV_REMOTE_DIRECTORY }
   }
 
-  return {
-    serverUrl: window.localStorage.getItem(STORAGE_KEYS.serverUrl) || '',
-    username: window.localStorage.getItem(STORAGE_KEYS.username) || '',
-    password: window.localStorage.getItem(STORAGE_KEYS.password) || '',
-    remoteDirectory: window.localStorage.getItem(STORAGE_KEYS.remoteDirectory) || DEFAULT_WEBDAV_REMOTE_DIRECTORY,
-  }
+  return readAppDocSync<WebDavBackupConfig>('webdav-config', { serverUrl: '', username: '', password: '', remoteDirectory: DEFAULT_WEBDAV_REMOTE_DIRECTORY })
 }
 
 export const normalizeWebDavConfig = (config: WebDavBackupConfig): WebDavBackupConfig => {
@@ -286,10 +275,7 @@ export const normalizeWebDavConfig = (config: WebDavBackupConfig): WebDavBackupC
 
 export const saveWebDavConfig = (config: WebDavBackupConfig) => {
   if (!canUseStorage()) return
-  window.localStorage.setItem(STORAGE_KEYS.serverUrl, config.serverUrl)
-  window.localStorage.setItem(STORAGE_KEYS.username, config.username)
-  window.localStorage.setItem(STORAGE_KEYS.password, config.password)
-  window.localStorage.setItem(STORAGE_KEYS.remoteDirectory, config.remoteDirectory)
+  writeAppDocSync('webdav-config', config)
 }
 
 const request = async(

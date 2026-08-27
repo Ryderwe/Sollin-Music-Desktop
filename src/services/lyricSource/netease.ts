@@ -3,6 +3,7 @@ import CryptoJS from 'crypto-js'
 import type { Song } from '@/types'
 import { parseYrc } from './parsers'
 import type { LyricsResult } from './types'
+import { readAppDocSync, writeAppDocSync } from '@/services/persistentStorage'
 
 const EAPI_KEY = 'e82ckenh8dichen8'
 const HOST = 'https://interface.music.163.com'
@@ -81,9 +82,8 @@ let initPromise: Promise<void> | null = null
 
 const loadSession = (): NeSession | null => {
   try {
-    const raw = window.localStorage?.getItem(STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as NeSession
+    const parsed = readAppDocSync<NeSession | null>(STORAGE_KEY, null)
+    if (!parsed) return null
     if (!parsed?.cookies || !parsed.userId) return null
     if (Date.now() - parsed.initAt > SESSION_TTL) return null
     return parsed
@@ -94,14 +94,14 @@ const loadSession = (): NeSession | null => {
 
 const saveSession = (next: NeSession) => {
   try {
-    window.localStorage?.setItem(STORAGE_KEY, JSON.stringify(next))
+    writeAppDocSync(STORAGE_KEY, next)
   } catch {
     // ignore
   }
 }
 
 const clearSession = () => {
-  try { window.localStorage?.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+  try { window.electronAPI?.storeRemoveSync?.(STORAGE_KEY) } catch { /* ignore */ }
   session = null
 }
 
