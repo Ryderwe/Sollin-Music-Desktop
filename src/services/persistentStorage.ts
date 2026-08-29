@@ -95,6 +95,24 @@ function normalizeStorageValue(value: unknown): StorageValue<unknown> | null {
   return { state: value, version: 0 }
 }
 
+/**
+ * Electron IPC uses the structured-clone algorithm, while Zustand's browser
+ * storage path serializes the value with JSON. Persisted Zustand state still
+ * contains action functions unless a store provides an explicit `partialize`,
+ * so sending it directly over IPC throws `An object could not be cloned` and
+ * silently leaves the on-disk document unchanged. Normalize at this boundary
+ * to the same JSON-safe shape used by the browser fallback.
+ */
+function toPersistableValue<T>(value: T): T {
+  try {
+    const serialized = JSON.stringify(value)
+    return (serialized === undefined ? null : JSON.parse(serialized)) as T
+  } catch (error) {
+    console.error('[persistentStorage] failed to normalize value for IPC:', error)
+    return value
+  }
+}
+
 async function migrateLegacyIfNeeded(docName: string): Promise<StorageValue<unknown> | null> {
   if (migratedDocs.has(docName)) return null
   migratedDocs.add(docName)
@@ -160,7 +178,8 @@ async function migrateLegacyIfNeeded(docName: string): Promise<StorageValue<unkn
 }
 
 function scheduleWrite(docName: string, value: StorageValue<unknown>, debounceMs: number) {
-  memoryCache.set(docName, value)
+  const persistableValue = toPersistableValue(value)
+  memoryCache.set(docName, persistableValue)
   const existing = pendingWrites.get(docName)
   if (existing?.timer) clearTimeout(existing.timer)
 
@@ -168,7 +187,7 @@ function scheduleWrite(docName: string, value: StorageValue<unknown>, debounceMs
     void flushDoc(docName)
   }, debounceMs)
 
-  pendingWrites.set(docName, { value, timer })
+  pendingWrites.set(docName, { value: persistableValue, timer })
 }
 
 async function flushDoc(docName: string): Promise<void> {
@@ -195,12 +214,38 @@ async function flushDoc(docName: string): Promise<void> {
   }
 }
 
+function flushDocSync(docName: string): void {
+  const pending = pendingWrites.get(docName)
+  if (pending?.timer) clearTimeout(pending.timer)
+  pendingWrites.delete(docName)
+
+  const value = pending?.value ?? memoryCache.get(docName)
+  if (value === undefined) {
+    return
+  }
+
+  const api = getElectronStoreApi()
+  if (!api?.storeSetSync) {
+    void flushDoc(docName)
+    return
+  }
+
+  try {
+    const result = api.storeSetSync(docName, value)
+    if (!result?.ok) {
+      console.error(`[persistentStorage] synchronous storeSet failed for ${docName}:`, result?.error)
+    }
+  } catch (error) {
+    console.error(`[persistentStorage] synchronous storeSet threw for ${docName}:`, error)
+  }
+}
+
 export async function flushAllPersistentStorage(): Promise<void> {
   const names = Array.from(new Set([
     ...pendingWrites.keys(),
     ...memoryCache.keys(),
   ]))
-  await Promise.all(names.map((name) => flushDoc(name)))
+  names.forEach((name) => flushDocSync(name))
 
   const api = getElectronStoreApi()
   if (api?.storeFlush) {
@@ -254,7 +299,7 @@ export function createAppPersistStorage<S>(
   const useElectron = isElectronStoreAvailable()
 
   return {
-    getItem: async (name): Promise<StorageValue<S> | null> => {
+    getItem: (name): StorageValue<S> | null | Promise<StorageValue<S> | null> => {
       // Zustand always passes the persist `name` option; prefer docName for disk file.
       const key = docName || name
 
@@ -264,20 +309,34 @@ export function createAppPersistStorage<S>(
 
       if (useElectron) {
         const api = getElectronStoreApi()!
-        try {
-          let value = normalizeStorageValue(await api.storeGet(key))
-          if (!value) {
-            value = await migrateLegacyIfNeeded(key)
+        if (api.storeGetSync) {
+          try {
+            const value = normalizeStorageValue(api.storeGetSync(key))
+            if (value) {
+              memoryCache.set(key, value)
+              return value as StorageValue<S>
+            }
+          } catch (error) {
+            console.error(`[persistentStorage] synchronous getItem failed for ${key}:`, error)
           }
-          if (value) {
-            memoryCache.set(key, value)
-            return value as StorageValue<S>
-          }
-          return null
-        } catch (error) {
-          console.error(`[persistentStorage] getItem failed for ${key}:`, error)
-          return null
         }
+
+        return (async() => {
+          try {
+            let value = normalizeStorageValue(await api.storeGet(key))
+            if (!value) {
+              value = await migrateLegacyIfNeeded(key)
+            }
+            if (value) {
+              memoryCache.set(key, value)
+              return value as StorageValue<S>
+            }
+            return null
+          } catch (error) {
+            console.error(`[persistentStorage] getItem failed for ${key}:`, error)
+            return null
+          }
+        })()
       }
 
       // Web / no IPC — also try legacy key once and rewrite under the new name
@@ -307,7 +366,7 @@ export function createAppPersistStorage<S>(
 
     setItem: (name, value): void => {
       const key = docName || name
-      const storageValue = value as StorageValue<unknown>
+      const storageValue = toPersistableValue(value as StorageValue<unknown>)
       memoryCache.set(key, storageValue)
 
       if (useElectron) {
@@ -344,6 +403,18 @@ export function createAppPersistStorage<S>(
         console.error(`[persistentStorage] localStorage removeItem failed for ${name}:`, error)
       }
     },
+  }
+}
+
+export async function flushAppPersistStorageDoc(docName: string): Promise<void> {
+  flushDocSync(docName)
+
+  const api = getElectronStoreApi()
+  if (!api?.storeFlush) return
+  try {
+    await api.storeFlush()
+  } catch (error) {
+    console.error(`[persistentStorage] storeFlush failed for ${docName}:`, error)
   }
 }
 
@@ -390,7 +461,7 @@ export async function writeAppDoc(docName: string, value: unknown): Promise<bool
   const api = getElectronStoreApi()
   if (api) {
     try {
-      const result = await api.storeSet(docName, value)
+      const result = await api.storeSet(docName, toPersistableValue(value))
       if (!result?.ok) {
         console.error(`[persistentStorage] writeAppDoc failed for ${docName}:`, result?.error)
         return false
@@ -428,7 +499,7 @@ export function readAppDocSync<T>(docName: string, fallback: T): T {
 export function writeAppDocSync(docName: string, value: unknown): boolean {
   const api = getElectronStoreApi()
   try {
-    if (api?.storeSetSync) return api.storeSetSync(docName, value).ok
+    if (api?.storeSetSync) return api.storeSetSync(docName, toPersistableValue(value)).ok
     window.localStorage?.setItem(docName, JSON.stringify(value))
     return true
   } catch {

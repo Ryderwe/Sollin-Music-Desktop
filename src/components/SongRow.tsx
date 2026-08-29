@@ -55,7 +55,6 @@ export default memo(function SongRow({
 }: SongRowProps) {
   const currentSong = usePlayerStore((s) => s.currentSong)
   const isPlaying = usePlayerStore((s) => s.isPlaying)
-  const isFavorite = useUserStore((s) => s.isFavorite)
   const addToFavorites = useUserStore((s) => s.addToFavorites)
   const removeFromFavorites = useUserStore((s) => s.removeFromFavorites)
   const playlists = useUserStore((s) => s.playlists)
@@ -74,7 +73,10 @@ export default memo(function SongRow({
 
   const isCurrentSong = isSamePlayableSong(currentSong, song)
   const isCurrentlyPlaying = isPlayingProp ?? (isCurrentSong && isPlaying)
-  const isFavorited = isFavorite(song.id, song.platform)
+  const isFavorited = useUserStore((state) => {
+    const favorites = song.platform === 'local' ? state.localFavorites : state.favorites
+    return favorites.some((item) => item.id === song.id && item.platform === song.platform)
+  })
   const isDisliked = isDislikedSong(song, dislikeRules)
   const selectablePlaylists = song.platform === 'local' ? localPlaylists : playlists
   const isCurrentPlaylistLocal = playlistId?.startsWith('local_playlist_')

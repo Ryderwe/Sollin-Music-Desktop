@@ -5,10 +5,88 @@ import type { SourceSwitchStage, SourceSwitchStageId } from '@/stores/sourceSwit
 import { useSourceSwitchSettingsStore } from '@/stores/sourceSwitchSettingsStore'
 import type { BackgroundSettings } from '@/stores/uiStore'
 import { useUIStore, DEFAULT_BACKGROUND_SETTINGS, GLOBAL_FONT_SIZE_DEFAULT } from '@/stores/uiStore'
-import { useUserStore } from '@/stores/userStore'
+import { useUserStore, type FavoriteSyncChange } from '@/stores/userStore'
 import type { DataSyncSnapshotData } from '@/types/dataSync'
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+
+const stableSerialize = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(',')}]`
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? String(value)
+}
+
+const isSameValue = (left: unknown, right: unknown) => (
+  stableSerialize(left) === stableSerialize(right)
+)
+
+const isSameSnapshotData = (left: DataSyncSnapshotData, right: DataSyncSnapshotData) => (
+  isSameValue(left, right)
+)
+
+const getSongKey = (song: unknown): string => {
+  if (!song || typeof song !== 'object') return ''
+  const value = song as { id?: unknown; platform?: unknown }
+  if (value.id == null || value.platform == null) return ''
+  return `${String(value.platform)}:${String(value.id)}`
+}
+
+const mergeOnlineFavorites = <T,>(
+  localFavorites: T[],
+  remoteFavorites: T[],
+  changes: Record<string, FavoriteSyncChange>,
+): T[] => {
+  const merged: T[] = []
+  const seen = new Set<string>()
+
+  // Keep the local order stable, then append remote-only additions. A stale
+  // remote snapshot must not reorder or erase a favorite that was saved here
+  // while the sync peer was offline or reconnecting.
+  for (const song of [...localFavorites, ...remoteFavorites]) {
+    const key = getSongKey(song)
+    if (key && seen.has(key)) continue
+    if (key) seen.add(key)
+    merged.push(song)
+  }
+
+  const localByKey = new Map(localFavorites.map((song) => [getSongKey(song), song]))
+  for (const [key, change] of Object.entries(changes)) {
+    if (change.action === 'remove') {
+      for (let index = merged.length - 1; index >= 0; index -= 1) {
+        if (getSongKey(merged[index]) === key) merged.splice(index, 1)
+      }
+      continue
+    }
+
+    const preferredSong = localByKey.get(key) || (change.action === 'add' ? change.song as unknown as T : undefined)
+    if (!preferredSong) continue
+    const existingIndex = merged.findIndex((song) => getSongKey(song) === key)
+    if (existingIndex >= 0) {
+      merged[existingIndex] = preferredSong
+    } else {
+      merged.unshift(preferredSong)
+    }
+  }
+
+  return merged
+}
+
+const pruneAcknowledgedFavoriteChanges = (
+  changes: Record<string, FavoriteSyncChange>,
+  remoteFavorites: unknown[],
+) => {
+  const remoteKeys = new Set(remoteFavorites.map(getSongKey).filter(Boolean))
+  return Object.fromEntries(
+    Object.entries(changes).filter(([key, change]) => (
+      change.action === 'add' ? !remoteKeys.has(key) : remoteKeys.has(key)
+    )),
+  ) as Record<string, FavoriteSyncChange>
+}
 
 const toBackupSource = (platform: string) => {
   switch (platform) {
@@ -123,62 +201,127 @@ export const applyDataSyncSnapshotData = (snapshot: DataSyncSnapshotData) => {
   const featureState = useFeatureStore.getState()
   const downloadState = useDownloadStore.getState()
   const sourceSwitchState = useSourceSwitchSettingsStore.getState()
+  const favoriteSyncChanges = userState.favoriteSyncChanges || {}
+  const remoteFavorites = clone(snapshot.user.favorites as typeof userState.favorites)
+  const mergedFavorites = mergeOnlineFavorites(
+    userState.favorites,
+    remoteFavorites,
+    favoriteSyncChanges,
+  )
+  const nextFavoriteSyncChanges = pruneAcknowledgedFavoriteChanges(favoriteSyncChanges, remoteFavorites)
+  const nextSnapshot: DataSyncSnapshotData = {
+    user: {
+      favorites: clone(mergedFavorites),
+      playlists: clone(snapshot.user.playlists as typeof userState.playlists),
+      onlinePlaylists: clone(snapshot.user.onlinePlaylists as typeof userState.onlinePlaylists),
+      recentlyPlayed: clone(snapshot.user.recentlyPlayed as typeof userState.recentlyPlayed),
+      playHistory: clone(snapshot.user.playHistory as typeof userState.playHistory),
+      playlistSectionOrder: [...snapshot.user.playlistSectionOrder],
+    },
+    feature: {
+      dislikeRules: snapshot.feature.dislikeRules,
+      searchHistory: [...snapshot.feature.searchHistory],
+    },
+    ui: {
+      theme: snapshot.ui.theme,
+      fontFamily: snapshot.ui.fontFamily,
+      customFontDataUrl: snapshot.ui.customFontDataUrl,
+      globalFontSize: snapshot.ui.globalFontSize ?? GLOBAL_FONT_SIZE_DEFAULT,
+      closeBehavior: snapshot.ui.closeBehavior,
+      backgroundSettings: clone(snapshot.ui.backgroundSettings),
+      lyricsPlayerMode: snapshot.ui.lyricsPlayerMode,
+      playerBackdropMode: snapshot.ui.playerBackdropMode,
+    },
+    download: {
+      downloadFileNameRuleEnabled: snapshot.download.downloadFileNameRuleEnabled,
+      downloadFileNameParts: [...snapshot.download.downloadFileNameParts],
+      downloadFileNameSeparator: snapshot.download.downloadFileNameSeparator,
+      saveExternalMetadataFiles: snapshot.download.saveExternalMetadataFiles,
+    },
+    sourceSwitch: {
+      enabled: snapshot.sourceSwitch.enabled,
+      rememberToggleChoices: snapshot.sourceSwitch.rememberToggleChoices,
+      stages: snapshot.sourceSwitch.stages.map((stage) => ({ ...stage })),
+      platformOrder: [...snapshot.sourceSwitch.platformOrder],
+      platformEnabled: { ...snapshot.sourceSwitch.platformEnabled },
+      scriptOrder: [...snapshot.sourceSwitch.scriptOrder],
+      scriptEnabled: { ...snapshot.sourceSwitch.scriptEnabled },
+    },
+  }
 
-  useUserStore.setState({
-    favorites: clone(snapshot.user.favorites as typeof userState.favorites),
-    playlists: clone(snapshot.user.playlists as typeof userState.playlists),
-    onlinePlaylists: clone(snapshot.user.onlinePlaylists as typeof userState.onlinePlaylists),
-    recentlyPlayed: clone(snapshot.user.recentlyPlayed as typeof userState.recentlyPlayed),
-    playHistory: clone(snapshot.user.playHistory as typeof userState.playHistory),
-    playlistSectionOrder: [...snapshot.user.playlistSectionOrder] as typeof userState.playlistSectionOrder,
-  })
+  const currentSnapshot = buildDataSyncSnapshotData()
+  const snapshotChanged = !isSameSnapshotData(currentSnapshot, nextSnapshot)
+  const favoriteChangesChanged = !isSameValue(
+    { favoriteSyncChanges },
+    { favoriteSyncChanges: nextFavoriteSyncChanges },
+  )
 
-  featureState.setDislikeRules(snapshot.feature.dislikeRules)
+  // A peer may resend the same snapshot while reconnecting. Avoid touching
+  // any Zustand store in that case: persist middleware and subscribers would
+  // otherwise schedule another outbound snapshot forever.
+  if (!snapshotChanged && !favoriteChangesChanged) return false
+
+  if (snapshotChanged || favoriteChangesChanged) {
+    useUserStore.setState({
+      favorites: mergedFavorites,
+      favoriteSyncChanges: nextFavoriteSyncChanges,
+      playlists: nextSnapshot.user.playlists as typeof userState.playlists,
+      onlinePlaylists: nextSnapshot.user.onlinePlaylists as typeof userState.onlinePlaylists,
+      recentlyPlayed: nextSnapshot.user.recentlyPlayed as typeof userState.recentlyPlayed,
+      playHistory: nextSnapshot.user.playHistory as typeof userState.playHistory,
+      playlistSectionOrder: [...nextSnapshot.user.playlistSectionOrder] as typeof userState.playlistSectionOrder,
+    })
+  }
+
+  if (!snapshotChanged) return favoriteChangesChanged
+
+  featureState.setDislikeRules(nextSnapshot.feature.dislikeRules)
   useFeatureStore.setState({
-    searchHistory: [...snapshot.feature.searchHistory],
+    searchHistory: [...nextSnapshot.feature.searchHistory],
   })
 
-  uiState.setTheme(snapshot.ui.theme)
-  uiState.setFontFamily(snapshot.ui.fontFamily)
-  uiState.setCustomFontDataUrl(snapshot.ui.customFontDataUrl)
-  uiState.setGlobalFontSize(snapshot.ui.globalFontSize ?? GLOBAL_FONT_SIZE_DEFAULT)
-  if (snapshot.ui.customFontDataUrl && snapshot.ui.fontFamily === 'CustomImportedFont, sans-serif') {
-    applyCustomFontFace(snapshot.ui.customFontDataUrl)
-  } else if (!snapshot.ui.customFontDataUrl) {
+  uiState.setTheme(nextSnapshot.ui.theme)
+  uiState.setFontFamily(nextSnapshot.ui.fontFamily)
+  uiState.setCustomFontDataUrl(nextSnapshot.ui.customFontDataUrl)
+  uiState.setGlobalFontSize(nextSnapshot.ui.globalFontSize ?? GLOBAL_FONT_SIZE_DEFAULT)
+  if (nextSnapshot.ui.customFontDataUrl && nextSnapshot.ui.fontFamily === 'CustomImportedFont, sans-serif') {
+    applyCustomFontFace(nextSnapshot.ui.customFontDataUrl)
+  } else if (!nextSnapshot.ui.customFontDataUrl) {
     const existing = document.getElementById('custom-font-face')
     if (existing) existing.remove()
   }
-  uiState.setCloseBehavior(snapshot.ui.closeBehavior)
+  uiState.setCloseBehavior(nextSnapshot.ui.closeBehavior)
   uiState.setBackgroundSettings({
     ...DEFAULT_BACKGROUND_SETTINGS,
-    ...snapshot.ui.backgroundSettings,
+    ...nextSnapshot.ui.backgroundSettings,
   } as Partial<BackgroundSettings>)
-  uiState.setLyricsPlayerMode(snapshot.ui.lyricsPlayerMode as any)
-  uiState.setPlayerBackdropMode(snapshot.ui.playerBackdropMode as any)
+  uiState.setLyricsPlayerMode(nextSnapshot.ui.lyricsPlayerMode as any)
+  uiState.setPlayerBackdropMode(nextSnapshot.ui.playerBackdropMode as any)
 
-  downloadState.setDownloadFileNameRuleEnabled(snapshot.download.downloadFileNameRuleEnabled)
-  downloadState.setDownloadFileNameParts(snapshot.download.downloadFileNameParts as any)
-  downloadState.setDownloadFileNameSeparator(snapshot.download.downloadFileNameSeparator)
-  downloadState.setSaveExternalMetadataFiles(snapshot.download.saveExternalMetadataFiles)
+  downloadState.setDownloadFileNameRuleEnabled(nextSnapshot.download.downloadFileNameRuleEnabled)
+  downloadState.setDownloadFileNameParts(nextSnapshot.download.downloadFileNameParts as any)
+  downloadState.setDownloadFileNameSeparator(nextSnapshot.download.downloadFileNameSeparator)
+  downloadState.setSaveExternalMetadataFiles(nextSnapshot.download.saveExternalMetadataFiles)
 
-  const nextPlatformEnabled = { ...sourceSwitchState.platformEnabled, ...snapshot.sourceSwitch.platformEnabled }
-  const nextScriptEnabled = { ...sourceSwitchState.scriptEnabled, ...snapshot.sourceSwitch.scriptEnabled }
+  const nextPlatformEnabled = { ...sourceSwitchState.platformEnabled, ...nextSnapshot.sourceSwitch.platformEnabled }
+  const nextScriptEnabled = { ...sourceSwitchState.scriptEnabled, ...nextSnapshot.sourceSwitch.scriptEnabled }
 
   useSourceSwitchSettingsStore.setState({
-    enabled: snapshot.sourceSwitch.enabled,
-    rememberToggleChoices: snapshot.sourceSwitch.rememberToggleChoices,
-    stages: snapshot.sourceSwitch.stages.map((stage: { id: string; enabled: boolean }) => ({
+    enabled: nextSnapshot.sourceSwitch.enabled,
+    rememberToggleChoices: nextSnapshot.sourceSwitch.rememberToggleChoices,
+    stages: nextSnapshot.sourceSwitch.stages.map((stage: { id: string; enabled: boolean }) => ({
       id: stage.id as SourceSwitchStageId,
       enabled: stage.enabled,
     })) as SourceSwitchStage[],
-    platformOrder: [...snapshot.sourceSwitch.platformOrder] as typeof sourceSwitchState.platformOrder,
+    platformOrder: [...nextSnapshot.sourceSwitch.platformOrder] as typeof sourceSwitchState.platformOrder,
     platformEnabled: nextPlatformEnabled,
-    scriptOrder: [...snapshot.sourceSwitch.scriptOrder],
+    scriptOrder: [...nextSnapshot.sourceSwitch.scriptOrder],
     scriptEnabled: nextScriptEnabled,
   })
 
-  backupBridge.setOnlineFavorites(mapSongsToBackupFavorites(snapshot.user.favorites as any))
-  backupBridge.setOnlinePlaylists(mapOnlinePlaylistsToBackupPlaylists(snapshot.user.onlinePlaylists as any))
+  backupBridge.setOnlineFavorites(mapSongsToBackupFavorites(nextSnapshot.user.favorites as any))
+  backupBridge.setOnlinePlaylists(mapOnlinePlaylistsToBackupPlaylists(nextSnapshot.user.onlinePlaylists as any))
+  return true
 }
 
 export const isDataSyncSnapshotEmpty = (snapshot: DataSyncSnapshotData) => (

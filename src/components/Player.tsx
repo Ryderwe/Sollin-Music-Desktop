@@ -70,7 +70,6 @@ export default function Player() {
   const sleepTimerMode = usePlayerStore((s) => s.sleepTimerMode)
   const sleepTimerRemainingSeconds = useSleepTimerCountdownStore((s) => s.remainingSeconds)
 
-  const isFavorite = useUserStore((s) => s.isFavorite)
   const addToFavorites = useUserStore((s) => s.addToFavorites)
   const removeFromFavorites = useUserStore((s) => s.removeFromFavorites)
   const playlists = useUserStore((s) => s.playlists)
@@ -301,7 +300,7 @@ export default function Player() {
   const handleFavoriteClick = () => {
     if (!currentSong) return
 
-    if (isFavorite(currentSong.id, currentSong.platform)) {
+    if (isSongFavorited) {
       removeFromFavorites(currentSong.id, currentSong.platform)
     } else {
       addToFavorites(currentSong)
@@ -339,7 +338,11 @@ export default function Player() {
     }
   }
 
-  const isSongFavorited = currentSong ? isFavorite(currentSong.id, currentSong.platform) : false
+  const isSongFavorited = useUserStore((state) => {
+    if (!currentSong) return false
+    const favorites = currentSong.platform === 'local' ? state.localFavorites : state.favorites
+    return favorites.some((song) => song.id === currentSong.id && song.platform === currentSong.platform)
+  })
   const sleepTimerLabel = sleepTimerMode === 'timer'
     ? formatTimerCountdown(sleepTimerRemainingSeconds)
     : sleepTimerMode === 'songEnd'

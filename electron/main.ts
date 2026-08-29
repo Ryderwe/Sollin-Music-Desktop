@@ -37,6 +37,22 @@ import { initializeDataSyncRuntime, disposeDataSyncRuntime, setupDataSyncIpcHand
 // Redirect all Electron/Chromium userData under ~/.sollin before any getPath('userData').
 initializeSollinDataRoot()
 
+// All builds share the same data root, so they must also share one Electron
+// instance lock. Without this, a development process and an installed process
+// can each cache electron-store state and overwrite the other's favorites.
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  })
+}
+
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let forceQuit = false
@@ -4179,28 +4195,34 @@ function setupIpcHandlers() {
 }
 
 // App lifecycle
-app.whenReady().then(async() => {
-  currentGlobalShortcutConfig = loadGlobalShortcutConfig()
-  registerGlobalShortcuts(currentGlobalShortcutConfig)
-  loadDesktopLyricsState()
-  createWindow()
-  createTray()
-  setupIpcHandlers()
-  await initializeLxSourceRuntime()
-  await initializeDataSyncRuntime()
+if (gotSingleInstanceLock) {
+  app.whenReady().then(async() => {
+    currentGlobalShortcutConfig = loadGlobalShortcutConfig()
+    registerGlobalShortcuts(currentGlobalShortcutConfig)
+    loadDesktopLyricsState()
+    // Register all IPC handlers before creating the renderer. Zustand's
+    // persistence reads through the synchronous store bridge from preload;
+    // creating the window first allowed the initial read to race handler
+    // registration and hydrate the user store with an empty value.
+    setupIpcHandlers()
+    createWindow()
+    createTray()
+    await initializeLxSourceRuntime()
+    await initializeDataSyncRuntime()
 
-  if (desktopLyricsEnabled) {
-    toggleDesktopLyricsWindow()
-  }
-
-  app.on('activate', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      createWindow()
-    } else {
-      mainWindow.show()
+    if (desktopLyricsEnabled) {
+      toggleDesktopLyricsWindow()
     }
+
+    app.on('activate', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow()
+      } else {
+        mainWindow.show()
+      }
+    })
   })
-})
+}
 
 
 

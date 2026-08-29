@@ -28,6 +28,7 @@ import { downloadManager } from '@/services/downloadManager'
 import { refreshAutoUpdateOnlinePlaylists } from '@/services/onlinePlaylistAutoUpdate'
 import dataSyncService from '@/services/dataSync'
 import { applyDataSyncSnapshotData, buildDataSyncSnapshotData, isDataSyncSnapshotEmpty } from '@/services/dataSyncState'
+import type { DataSyncSnapshotData } from '@/types/dataSync'
 import { useFeatureStore } from '@/stores/featureStore'
 import { useDownloadStore } from '@/stores/downloadStore'
 import { useSourceSwitchSettingsStore } from '@/stores/sourceSwitchSettingsStore'
@@ -55,6 +56,28 @@ const ArtistDetail = lazy(() => import('@/pages/ArtistDetail'))
 const AlbumDetail = lazy(() => import('@/pages/AlbumDetail'))
 const PlaylistExplore = lazy(() => import('@/pages/PlaylistExplore'))
 const DailyRecommend = lazy(() => import('@/pages/DailyRecommend'))
+
+const waitForUserStoreHydration = async() => {
+  const persistApi = useUserStore.persist
+  if (!persistApi || persistApi.hasHydrated()) return
+
+  await new Promise<void>((resolve) => {
+    let unsubscribe = () => {}
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      unsubscribe()
+      resolve()
+    }
+
+    unsubscribe = persistApi.onFinishHydration(() => finish())
+    // Hydration can finish between the first check and listener registration.
+    if (persistApi.hasHydrated()) finish()
+  })
+}
+
+const serializeSnapshotData = (snapshot: DataSyncSnapshotData) => JSON.stringify(snapshot)
 
 function App() {
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -89,6 +112,9 @@ function App() {
   const handledLxSourceAlertsRef = useRef<Set<string>>(new Set())
   const isApplyingRemoteSnapshotRef = useRef(false)
   const pushSnapshotTimerRef = useRef<number | null>(null)
+  const lastPushedSnapshotFingerprintRef = useRef<string | null>(null)
+  const forceNextSnapshotPushRef = useRef(false)
+  const previousDataSyncStatusRef = useRef({ enabled: false, connected: false })
   const lastMediaPositionRef = useRef<{
     position: number
     duration: number
@@ -156,51 +182,101 @@ function App() {
 
     void downloadManager.ensureInitialized()
 
-    const scheduleSnapshotPush = () => {
-      if (isApplyingRemoteSnapshotRef.current) return
-      const status = dataSyncService.getStatus()
-      if (!status.enabled) return
-      if (pushSnapshotTimerRef.current) {
-        window.clearTimeout(pushSnapshotTimerRef.current)
-      }
-      pushSnapshotTimerRef.current = window.setTimeout(() => {
-        pushSnapshotTimerRef.current = null
+    let disposed = false
+    let cleanupDataSync = () => {}
+
+    const initializeDataSync = async() => {
+      // Never let an initial empty Zustand state race the persisted user
+      // document or a remote snapshot. An empty push during this window can
+      // overwrite the just-saved online favorites on the sync peer.
+      await waitForUserStoreHydration()
+      if (disposed) return
+
+      const scheduleSnapshotPush = (options: { force?: boolean } = {}) => {
+        if (disposed || !useUserStore.persist.hasHydrated()) return
         if (isApplyingRemoteSnapshotRef.current) return
-        if (!dataSyncService.getStatus().enabled) return
-        void dataSyncService.pushSnapshot(buildDataSyncSnapshotData())
-      }, 400)
+        const status = dataSyncService.getStatus()
+        if (!status.enabled) return
+        if (options.force) forceNextSnapshotPushRef.current = true
+        if (pushSnapshotTimerRef.current) {
+          window.clearTimeout(pushSnapshotTimerRef.current)
+        }
+        pushSnapshotTimerRef.current = window.setTimeout(() => {
+          pushSnapshotTimerRef.current = null
+          if (disposed || !useUserStore.persist.hasHydrated()) return
+          if (isApplyingRemoteSnapshotRef.current) return
+          if (!dataSyncService.getStatus().enabled) return
+          const nextSnapshot = buildDataSyncSnapshotData()
+          const nextFingerprint = serializeSnapshotData(nextSnapshot)
+          const forcePush = forceNextSnapshotPushRef.current
+          forceNextSnapshotPushRef.current = false
+          if (!forcePush && nextFingerprint === lastPushedSnapshotFingerprintRef.current) return
+          lastPushedSnapshotFingerprintRef.current = nextFingerprint
+          void dataSyncService.pushSnapshot(nextSnapshot)
+        }, 400)
+      }
+
+      const unsubscribeSnapshot = dataSyncService.onSnapshot((snapshot) => {
+        if (!snapshot || disposed) return
+        if (!useUserStore.persist.hasHydrated()) return
+        // `pushSnapshot()` also updates the main-process snapshot and echoes it
+        // back through IPC. That is our own state, not a remote change; feeding
+        // it through the apply path can schedule an endless self-push loop.
+        const localDeviceId = dataSyncService.getStatus().deviceId
+        if (localDeviceId && snapshot.sourceId === localDeviceId) return
+        if (isDataSyncSnapshotEmpty(snapshot.data)) return
+        isApplyingRemoteSnapshotRef.current = true
+        let snapshotChanged = false
+        try {
+          snapshotChanged = applyDataSyncSnapshotData(snapshot.data)
+        } finally {
+          window.setTimeout(() => {
+            isApplyingRemoteSnapshotRef.current = false
+            // Only write back a snapshot when applying the remote data actually
+            // changed local state. Replayed/stale snapshots are ignored; pushing
+            // them again would create a reconnect loop with an old peer.
+            if (!disposed && snapshotChanged) scheduleSnapshotPush()
+          }, 0)
+        }
+      })
+
+      const unsubscribeStatus = dataSyncService.onStatus((status) => {
+        const previous = previousDataSyncStatusRef.current
+        previousDataSyncStatusRef.current = {
+          enabled: status.enabled,
+          connected: status.clientConnected,
+        }
+        if (!status.enabled) return
+        const shouldForcePush = (status.clientConnected && !previous.connected) || (status.enabled && !previous.enabled)
+        scheduleSnapshotPush({ force: shouldForcePush })
+      })
+
+      const unsubscribeUser = useUserStore.subscribe(() => scheduleSnapshotPush())
+      const unsubscribeFeature = useFeatureStore.subscribe(() => scheduleSnapshotPush())
+      const unsubscribeUI = useUIStore.subscribe(() => scheduleSnapshotPush())
+      const unsubscribeDownload = useDownloadStore.subscribe(() => scheduleSnapshotPush())
+      const unsubscribeSourceSwitch = useSourceSwitchSettingsStore.subscribe(() => scheduleSnapshotPush())
+
+      cleanupDataSync = () => {
+        unsubscribeSnapshot()
+        unsubscribeStatus()
+        unsubscribeUser()
+        unsubscribeFeature()
+        unsubscribeUI()
+        unsubscribeDownload()
+        unsubscribeSourceSwitch()
+      }
+
+      await dataSyncService.initialize()
+      if (disposed) return
+      const status = dataSyncService.getStatus()
+      if (status.enabled) {
+        scheduleSnapshotPush({ force: true })
+      }
     }
 
-    const unsubscribeSnapshot = dataSyncService.onSnapshot((snapshot) => {
-      if (!snapshot) return
-      if (isDataSyncSnapshotEmpty(snapshot.data)) return
-      isApplyingRemoteSnapshotRef.current = true
-      try {
-        applyDataSyncSnapshotData(snapshot.data)
-      } finally {
-        window.setTimeout(() => {
-          isApplyingRemoteSnapshotRef.current = false
-        }, 0)
-      }
-    })
-
-    const unsubscribeStatus = dataSyncService.onStatus((status) => {
-      if (status.enabled) {
-        scheduleSnapshotPush()
-      }
-    })
-
-    const unsubscribeUser = useUserStore.subscribe(scheduleSnapshotPush)
-    const unsubscribeFeature = useFeatureStore.subscribe(scheduleSnapshotPush)
-    const unsubscribeUI = useUIStore.subscribe(scheduleSnapshotPush)
-    const unsubscribeDownload = useDownloadStore.subscribe(scheduleSnapshotPush)
-    const unsubscribeSourceSwitch = useSourceSwitchSettingsStore.subscribe(scheduleSnapshotPush)
-
-    void dataSyncService.initialize().then(() => {
-      const status = dataSyncService.getStatus()
-      if (status.enabled) {
-        scheduleSnapshotPush()
-      }
+    void initializeDataSync().catch((error) => {
+      console.warn('[data-sync] renderer initialization failed:', error)
     })
 
     // Refresh imported online playlists that opt in to auto update.
@@ -217,14 +293,9 @@ function App() {
     void checkAnnouncement()
 
     return () => {
+      disposed = true
+      cleanupDataSync()
       analytics.stop()
-      unsubscribeSnapshot()
-      unsubscribeStatus()
-      unsubscribeUser()
-      unsubscribeFeature()
-      unsubscribeUI()
-      unsubscribeDownload()
-      unsubscribeSourceSwitch()
       if (pushSnapshotTimerRef.current) {
         window.clearTimeout(pushSnapshotTimerRef.current)
       }

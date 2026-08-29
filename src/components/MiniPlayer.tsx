@@ -24,7 +24,6 @@ export default function MiniPlayer() {
   const playbackSessionKey = usePlayerStore((s) => s.playbackSessionKey)
   const togglePlay = usePlayerStore((s) => s.togglePlay)
   const playNext = usePlayerStore((s) => s.playNext)
-  const isFavorite = useUserStore((s) => s.isFavorite)
   const addToFavorites = useUserStore((s) => s.addToFavorites)
   const removeFromFavorites = useUserStore((s) => s.removeFromFavorites)
   const currentTime = usePlaybackProgressStore((state) => state.currentTime)
@@ -42,7 +41,11 @@ export default function MiniPlayer() {
   })
 
   const displaySong = currentSong || playlist[0] || null
-  const isSongFavorited = currentSong ? isFavorite(currentSong.id, currentSong.platform) : false
+  const isSongFavorited = useUserStore((state) => {
+    if (!currentSong) return false
+    const favorites = currentSong.platform === 'local' ? state.localFavorites : state.favorites
+    return favorites.some((song) => song.id === currentSong.id && song.platform === currentSong.platform)
+  })
   const isMac = platform === 'darwin'
   const isDarkAppearance = theme === 'system' ? systemPrefersDark : theme === 'dark'
   const cardBackgroundColor = isDarkAppearance

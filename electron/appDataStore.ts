@@ -22,13 +22,24 @@ type PendingWrite = {
   timer: ReturnType<typeof setTimeout> | null
 }
 
+type PersistEnvelope = {
+  state: unknown
+  version?: number
+}
+
+type NormalizedDocument = {
+  value: unknown
+  canonical: Record<string, unknown>
+  needsRewrite: boolean
+}
+
 const WRITE_DEBOUNCE_MS = 200
 
 let initialized = false
 let oldUserDataPath: string | null = null
 const memoryCache = new Map<string, unknown>()
 const pendingWrites = new Map<string, PendingWrite>()
-const stores = new Map<string, Store<{ data?: unknown }>>()
+const stores = new Map<string, Store<Record<string, unknown>>>()
 
 const isValidDocName = (name: unknown): name is string => (
   typeof name === 'string' && DOC_NAME_PATTERN.test(name)
@@ -59,10 +70,10 @@ function getDocPath(name: string): string {
  * document preserves the existing file layout (`store/<name>.json`) while
  * giving us electron-store's atomic writes, corruption recovery and typed API.
  */
-function getElectronStore(name: string): Store<{ data?: unknown }> {
+function getElectronStore(name: string): Store<Record<string, unknown>> {
   let store = stores.get(name)
   if (!store) {
-    store = new Store<{ data?: unknown }>({
+    store = new Store<Record<string, unknown>>({
       name,
       cwd: getStoreDir(),
       fileExtension: 'json',
@@ -71,6 +82,134 @@ function getElectronStore(name: string): Store<{ data?: unknown }> {
     stores.set(name, store)
   }
   return store
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && Object.prototype.toString.call(value) === '[object Object]'
+)
+
+const hasOwn = (value: Record<string, unknown>, key: string) => (
+  Object.prototype.hasOwnProperty.call(value, key)
+)
+
+const isPersistEnvelope = (value: unknown): value is PersistEnvelope => (
+  isRecord(value) && hasOwn(value, 'state')
+)
+
+const jsonEqual = (left: unknown, right: unknown) => {
+  try {
+    return JSON.stringify(left) === JSON.stringify(right)
+  } catch {
+    return left === right
+  }
+}
+
+/**
+ * Merge legacy and current persisted Zustand state without throwing away
+ * records written by either format. The current `data` value is authoritative
+ * for ordering/scalars; legacy arrays fill in entries that are missing there.
+ */
+const mergeState = (current: unknown, legacy: unknown): unknown => {
+  if (!isRecord(current)) return legacy ?? current
+  if (!isRecord(legacy)) return current
+
+  const merged: Record<string, unknown> = { ...legacy, ...current }
+  for (const [key, currentValue] of Object.entries(current)) {
+    const legacyValue = legacy[key]
+    if (Array.isArray(currentValue) && Array.isArray(legacyValue)) {
+      const seen = new Set<string>()
+      const mergedArray: unknown[] = []
+      for (const item of [...currentValue, ...legacyValue]) {
+        let itemKey = ''
+        if (isRecord(item) && item.id != null) {
+          itemKey = item.platform != null
+            ? `${String(item.platform)}:${String(item.id)}`
+            : `id:${String(item.id)}`
+        }
+        if (!itemKey) {
+          try {
+            itemKey = `json:${JSON.stringify(item)}`
+          } catch {
+            itemKey = `value:${String(item)}`
+          }
+        }
+        if (seen.has(itemKey)) continue
+        seen.add(itemKey)
+        mergedArray.push(item)
+      }
+      merged[key] = mergedArray
+      continue
+    }
+
+    if (currentValue === undefined || currentValue === null) {
+      merged[key] = legacyValue
+    }
+  }
+  return merged
+}
+
+const mergePersistEnvelopes = (current: PersistEnvelope, legacy: PersistEnvelope): PersistEnvelope => ({
+  state: mergeState(current.state, legacy.state),
+  version: typeof current.version === 'number'
+    ? current.version
+    : typeof legacy.version === 'number' ? legacy.version : 0,
+})
+
+const buildCanonicalStore = (value: unknown): Record<string, unknown> => {
+  if (isPersistEnvelope(value)) {
+    return {
+      data: value,
+      state: value.state,
+      version: typeof value.version === 'number' ? value.version : 0,
+    }
+  }
+  return { data: value }
+}
+
+/**
+ * Older builds wrote a Zustand envelope directly as `{state, version}` while
+ * electron-store builds write it under `{data: {state, version}}`. During the
+ * transition both shapes can coexist in one file. Always prefer/merge the
+ * nested current value, then mirror it back to the legacy keys so an older
+ * process cannot resurrect stale favorites on the next launch.
+ */
+const normalizeStoredDocument = (rawStore: unknown): NormalizedDocument => {
+  if (!isRecord(rawStore)) {
+    const canonical = buildCanonicalStore(rawStore)
+    return { value: rawStore, canonical, needsRewrite: !jsonEqual(rawStore, canonical) }
+  }
+
+  const hasData = hasOwn(rawStore, 'data')
+  const nestedValue = rawStore.data
+  const topEnvelope = isPersistEnvelope(rawStore)
+  const nestedEnvelope = isPersistEnvelope(nestedValue)
+
+  let value: unknown
+  if (hasData && nestedEnvelope) {
+    value = topEnvelope
+      ? mergePersistEnvelopes(nestedValue, {
+          state: rawStore.state,
+          version: typeof rawStore.version === 'number' ? rawStore.version : 0,
+        })
+      : nestedValue
+  } else if (hasData) {
+    // Non-Zustand documents (sync config, cache settings, etc.) are raw data.
+    value = nestedValue
+  } else {
+    value = rawStore
+  }
+
+  const canonical = buildCanonicalStore(value)
+  const needsRewrite = !jsonEqual(rawStore, canonical)
+  return { value, canonical, needsRewrite }
+}
+
+const rewriteCanonicalDocument = (name: string, normalized: NormalizedDocument) => {
+  const store = getElectronStore(name)
+  store.clear()
+  for (const [key, value] of Object.entries(normalized.canonical)) {
+    store.set(key, value)
+  }
 }
 
 function ensureDir(dirPath: string) {
@@ -185,9 +324,38 @@ export function initializeSollinDataRoot(): string {
   }
 
   migrateLegacyUserDataIfNeeded()
+  normalizeLegacyStoreDocuments()
   initialized = true
   console.log('[appDataStore] data root:', SOLLIN_HOME)
   return SOLLIN_HOME
+}
+
+function normalizeLegacyStoreDocuments() {
+  ensureDir(getStoreDir())
+  let entries: string[] = []
+  try {
+    entries = fs.readdirSync(getStoreDir())
+  } catch (error) {
+    console.warn('[appDataStore] failed to enumerate store documents:', error)
+    return
+  }
+
+  for (const entry of entries) {
+    if (!entry.endsWith('.json')) continue
+    const name = entry.slice(0, -'.json'.length)
+    if (!isValidDocName(name)) continue
+
+    try {
+      const normalized = normalizeStoredDocument(getElectronStore(name).store)
+      memoryCache.set(name, normalized.value)
+      if (normalized.needsRewrite) {
+        rewriteCanonicalDocument(name, normalized)
+        console.log(`[appDataStore] normalized legacy document: ${name}`)
+      }
+    } catch (error) {
+      console.warn(`[appDataStore] failed to normalize document ${name}:`, error)
+    }
+  }
 }
 
 function migrateLegacyUserDataIfNeeded() {
@@ -251,12 +419,16 @@ export function readDoc(name: string): unknown | null {
 
   let value: unknown = null
   try {
-    const rawStore = getElectronStore(name).store
-    value = Object.prototype.hasOwnProperty.call(rawStore, 'data') ? rawStore.data : rawStore
+    const normalized = normalizeStoredDocument(getElectronStore(name).store)
+    value = normalized.value
+    if (normalized.needsRewrite) {
+      rewriteCanonicalDocument(name, normalized)
+    }
   } catch (error) {
     console.error('[appDataStore] electron-store read failed:', name, error)
     // Keep compatibility with a partially written/legacy document.
-    value = readJsonFile<unknown>(getDocPath(name))
+    const rawFile = readJsonFile<unknown>(getDocPath(name))
+    value = rawFile == null ? null : normalizeStoredDocument(rawFile).value
   }
   if (value !== null) {
     memoryCache.set(name, value)
@@ -266,7 +438,11 @@ export function readDoc(name: string): unknown | null {
 
 function writeDocImmediate(name: string, value: unknown) {
   memoryCache.set(name, value)
-  getElectronStore(name).set('data', value)
+  rewriteCanonicalDocument(name, {
+    value,
+    canonical: buildCanonicalStore(value),
+    needsRewrite: true,
+  })
 }
 
 export function writeDoc(name: string, value: unknown, options?: { immediate?: boolean }) {

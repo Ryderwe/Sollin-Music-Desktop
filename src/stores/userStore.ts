@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Playlist, Song, OnlinePlaylist } from '@/types'
-import { createAppPersistStorage } from '@/services/persistentStorage'
+import { createAppPersistStorage, flushAppPersistStorageDoc } from '@/services/persistentStorage'
 import {
   isGatewayCoverUrl,
   preparePlaylistForLibrary,
@@ -14,8 +14,13 @@ import {
 type OnlinePlaylistUpsertResult = 'created' | 'updated'
 type PlaylistSection = 'custom' | 'local' | 'online'
 
+export type FavoriteSyncChange =
+  | { action: 'add'; song: Song }
+  | { action: 'remove' }
+
 interface UserStore {
   favorites: Song[]
+  favoriteSyncChanges: Record<string, FavoriteSyncChange>
   localFavorites: Song[]
   playlists: Playlist[]
   localPlaylists: Playlist[]
@@ -64,6 +69,15 @@ const isSameSong = (left: Pick<Song, 'id' | 'platform'>, right: Pick<Song, 'id' 
   left.id === right.id && left.platform === right.platform
 )
 
+const getFavoriteKey = (song: Pick<Song, 'id' | 'platform'>) => `${song.platform}:${song.id}`
+
+const flushFavorites = () => {
+  // The favorite button is an explicit user action. Flush the user document
+  // synchronously through the Electron bridge so an immediate app quit cannot
+  // leave the newly added/removed song only in the renderer debounce queue.
+  void flushAppPersistStorageDoc('user')
+}
+
 const mergeSong = (current: Song, incoming: Song): Song => ({
   ...current,
   ...incoming,
@@ -109,6 +123,19 @@ const didSongChange = (left: Song, right: Song) => {
 const didSongListChange = (left: Song[], right: Song[]) => {
   if (left.length !== right.length) return true
   return left.some((song, index) => didSongChange(song, right[index]))
+}
+
+/**
+ * Apply the result of an asynchronous cover refresh to the current list
+ * without resurrecting entries that were removed or dropping entries that
+ * were added while the request was in flight.
+ */
+const mergeResolvedSongList = (current: Song[], resolved: Song[]) => {
+  const resolvedByKey = new Map(resolved.map((song) => [getFavoriteKey(song), song]))
+  return current.map((song) => {
+    const refreshed = resolvedByKey.get(getFavoriteKey(song))
+    return refreshed ? mergeSong(song, refreshed) : song
+  })
 }
 
 const didPlaylistChange = (left: Playlist, right: Playlist) => {
@@ -271,26 +298,60 @@ export const useUserStore = create<UserStore>()(
           ])
           const onlinePlaylists = state.onlinePlaylists.map((playlist) => prepareOnlinePlaylist(playlist))
 
-          if (
-            !didSongListChange(state.favorites, favorites) &&
-            !didSongListChange(state.localFavorites, localFavorites) &&
-            !didSongListChange(state.recentlyPlayed, recentlyPlayed) &&
-            !didSongListChange(state.playHistory, playHistory) &&
-            !didPlaylistListChange(state.playlists, playlists) &&
-            !didPlaylistListChange(state.localPlaylists, localPlaylists) &&
-            !didOnlinePlaylistListChange(state.onlinePlaylists, onlinePlaylists)
-          ) {
-            return
-          }
+          set((current) => {
+            // Re-read the store at commit time. The original `state` above
+            // belongs to the beginning of the async request and may already
+            // be stale by the time all cover requests finish.
+            const nextFavorites = mergeResolvedSongList(current.favorites, favorites)
+            const nextLocalFavorites = mergeResolvedSongList(current.localFavorites, localFavorites)
+            const nextRecentlyPlayed = mergeResolvedSongList(current.recentlyPlayed, recentlyPlayed)
+            const nextPlayHistory = mergeResolvedSongList(current.playHistory, playHistory)
 
-          set({
-            favorites,
-            localFavorites,
-            recentlyPlayed,
-            playHistory,
-            playlists,
-            localPlaylists,
-            onlinePlaylists,
+            const mergePlaylists = (currentPlaylists: Playlist[], resolvedPlaylists: Playlist[]) => {
+              const resolvedById = new Map(resolvedPlaylists.map((playlist) => [playlist.id, playlist]))
+              return currentPlaylists.map((playlist) => {
+                const refreshed = resolvedById.get(playlist.id)
+                if (!refreshed) return playlist
+                const songs = mergeResolvedSongList(playlist.songs, refreshed.songs)
+                return preparePlaylistForLibrary({
+                  ...playlist,
+                  songs,
+                  cover: refreshed.cover || playlist.cover,
+                })
+              })
+            }
+
+            const nextPlaylists = mergePlaylists(current.playlists, playlists)
+            const nextLocalPlaylists = mergePlaylists(current.localPlaylists, localPlaylists)
+            const resolvedOnlinePlaylistsById = new Map(onlinePlaylists.map((playlist) => [playlist.id, playlist]))
+            const nextOnlinePlaylists = current.onlinePlaylists.map((playlist) => {
+              const refreshed = resolvedOnlinePlaylistsById.get(playlist.id)
+              return refreshed
+                ? prepareOnlinePlaylist({ ...playlist, cover: refreshed.cover || playlist.cover })
+                : playlist
+            })
+
+            if (
+              !didSongListChange(current.favorites, nextFavorites) &&
+              !didSongListChange(current.localFavorites, nextLocalFavorites) &&
+              !didSongListChange(current.recentlyPlayed, nextRecentlyPlayed) &&
+              !didSongListChange(current.playHistory, nextPlayHistory) &&
+              !didPlaylistListChange(current.playlists, nextPlaylists) &&
+              !didPlaylistListChange(current.localPlaylists, nextLocalPlaylists) &&
+              !didOnlinePlaylistListChange(current.onlinePlaylists, nextOnlinePlaylists)
+            ) {
+              return current
+            }
+
+            return {
+              favorites: nextFavorites,
+              localFavorites: nextLocalFavorites,
+              recentlyPlayed: nextRecentlyPlayed,
+              playHistory: nextPlayHistory,
+              playlists: nextPlaylists,
+              localPlaylists: nextLocalPlaylists,
+              onlinePlaylists: nextOnlinePlaylists,
+            }
           })
         })().finally(() => {
           refreshPromise = null
@@ -301,6 +362,7 @@ export const useUserStore = create<UserStore>()(
 
       return {
         favorites: [],
+        favoriteSyncChanges: {},
         localFavorites: [],
         playlists: [],
         localPlaylists: [],
@@ -319,6 +381,7 @@ export const useUserStore = create<UserStore>()(
         clearAllData: () => {
           set({
             favorites: [],
+            favoriteSyncChanges: {},
             localFavorites: [],
             playlists: [],
             localPlaylists: [],
@@ -341,11 +404,15 @@ export const useUserStore = create<UserStore>()(
               localFavorites: [preparedSong, ...localFavorites.filter((item) => !isSameSong(item, preparedSong))],
             })
           } else {
-            const { favorites } = get()
-            set({
-              favorites: [preparedSong, ...favorites.filter((item) => !isSameSong(item, preparedSong))],
-            })
+            set((state) => ({
+              favorites: [preparedSong, ...state.favorites.filter((item) => !isSameSong(item, preparedSong))],
+              favoriteSyncChanges: {
+                ...state.favoriteSyncChanges,
+                [getFavoriteKey(preparedSong)]: { action: 'add', song: preparedSong },
+              },
+            }))
           }
+          flushFavorites()
           refreshSongAcrossLibrary(preparedSong)
         },
 
@@ -355,13 +422,18 @@ export const useUserStore = create<UserStore>()(
             set({
               localFavorites: localFavorites.filter((song) => !(song.id === songId && song.platform === platform)),
             })
+            flushFavorites()
             return
           }
 
-          const { favorites } = get()
-          set({
-            favorites: favorites.filter((song) => !(song.id === songId && song.platform === platform)),
-          })
+          set((state) => ({
+            favorites: state.favorites.filter((song) => !(song.id === songId && song.platform === platform)),
+            favoriteSyncChanges: {
+              ...state.favoriteSyncChanges,
+              [`${platform}:${songId}`]: { action: 'remove' },
+            },
+          }))
+          flushFavorites()
         },
 
         isFavorite: (songId, platform) => {

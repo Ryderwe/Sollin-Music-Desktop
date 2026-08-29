@@ -1263,8 +1263,24 @@ export class DataSyncLxCompatClient {
 
     const storedKey = this.persisted.clientAuthKeys[serverId]
     if (!forceCodeAuth && storedKey) {
-      await this.authWithStoredKey(clientHost, storedKey)
-      return storedKey
+      try {
+        await this.authWithStoredKey(clientHost, storedKey)
+        return storedKey
+      } catch (error) {
+        // A server can invalidate a previously issued client key (for example
+        // after its data is reset). Do not leave the desktop permanently
+        // disconnected: fall back to the configured connection code so the
+        // key can be issued again. Network errors are rethrown unchanged and
+        // will use the normal reconnect timer instead of making extra auth
+        // attempts against an unavailable server.
+        const message = error instanceof Error ? error.message : String(error)
+        const canReauthenticate = message === 'LX 同步已保存认证无效' || message === 'LX 同步已保存认证解析失败'
+        if (!canReauthenticate || !connectionCode?.trim()) throw error
+
+        delete this.persisted.clientAuthKeys[serverId]
+        this.persistState()
+        console.warn('[data-sync][lx-compat-client] saved authentication expired; retrying with connection code')
+      }
     }
 
     return this.authWithConnectionCode(clientHost, serverId, connectionCode || '')

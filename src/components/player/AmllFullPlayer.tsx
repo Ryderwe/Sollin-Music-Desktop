@@ -97,7 +97,6 @@ export default function AmllFullPlayer() {
   const amllLyricSettings = useUIStore((s) => s.amllLyricSettings)
   const setAmllLyricSettings = useUIStore((s) => s.setAmllLyricSettings)
   const resetAmllLyricSettings = useUIStore((s) => s.resetAmllLyricSettings)
-  const isFavorite = useUserStore((s) => s.isFavorite)
   const addToFavorites = useUserStore((s) => s.addToFavorites)
   const removeFromFavorites = useUserStore((s) => s.removeFromFavorites)
 
@@ -235,7 +234,7 @@ export default function AmllFullPlayer() {
 
   const handleFavoriteClick = () => {
     if (!currentSong) return
-    if (isFavorite(currentSong.id, currentSong.platform)) {
+    if (isSongFavorited) {
       removeFromFavorites(currentSong.id, currentSong.platform)
     } else {
       addToFavorites(currentSong)
@@ -271,7 +270,11 @@ export default function AmllFullPlayer() {
     ? playlist.findIndex((song) => isSamePlayableSong(currentSong, song))
     : -1
   const queueSourceLabel = resolvePlaylistSourceLabel(playlistId, playlistName)
-  const isSongFavorited = currentSong ? isFavorite(currentSong.id, currentSong.platform) : false
+  const isSongFavorited = useUserStore((state) => {
+    if (!currentSong) return false
+    const favorites = currentSong.platform === 'local' ? state.localFavorites : state.favorites
+    return favorites.some((song) => song.id === currentSong.id && song.platform === currentSong.platform)
+  })
   const displayedVolume = isMuted ? 0 : volume
   const volumeLabel = `${Math.round(displayedVolume * 100)}%`
   const lyricPlayerStyle = useMemo(() => ({

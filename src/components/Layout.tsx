@@ -884,7 +884,6 @@ function LyricsPanel({
   const theme = useUIStore((s) => s.theme)
   const playlists = useUserStore((s) => s.playlists)
   const localPlaylists = useUserStore((s) => s.localPlaylists)
-  const isFavorite = useUserStore((s) => s.isFavorite)
   const addToFavorites = useUserStore((s) => s.addToFavorites)
   const removeFromFavorites = useUserStore((s) => s.removeFromFavorites)
   const addToPlaylist = useUserStore((s) => s.addToPlaylist)
@@ -1055,7 +1054,11 @@ function LyricsPanel({
     localStorage.setItem(LYRICS_COLOR_STORAGE_KEY, JSON.stringify(lyricColors))
   }, [lyricColors])
 
-  const isSongFavorited = currentSong ? isFavorite(currentSong.id, currentSong.platform) : false
+  const isSongFavorited = useUserStore((state) => {
+    if (!currentSong) return false
+    const favorites = currentSong.platform === 'local' ? state.localFavorites : state.favorites
+    return favorites.some((song) => song.id === currentSong.id && song.platform === currentSong.platform)
+  })
   const selectablePlaylists = currentSong?.platform === 'local' ? localPlaylists : playlists
 
   useEffect(() => {

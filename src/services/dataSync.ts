@@ -125,20 +125,52 @@ class DataSyncService {
   private snapshot: DataSyncSnapshot | null = null
   private statusListeners = new Set<DataSyncEventListener>()
   private snapshotListeners = new Set<SnapshotListener>()
+  private ipcListenersBound = false
+  private initializePromise: Promise<void> | null = null
 
   async initialize() {
     if (!isElectronAvailable()) return
-    await this.refreshStatus()
+    if (this.initializePromise) return this.initializePromise
 
-    window.electronAPI?.onDataSyncStatus?.((nextStatus) => {
-      this.status = nextStatus
-      this.emitStatus()
-    })
+    const api = window.electronAPI
+    this.initializePromise = (async() => {
+      // Bind IPC listeners before querying the current state. The main process
+      // may finish connecting to a sync peer while these awaits are in flight;
+      // registering first guarantees that event is not lost.
+      if (!this.ipcListenersBound) {
+        this.ipcListenersBound = true
+        api?.onDataSyncStatus?.((nextStatus) => {
+          this.status = nextStatus
+          this.emitStatus()
+        })
 
-    window.electronAPI?.onDataSyncSnapshot?.((snapshot) => {
-      this.snapshot = snapshot
-      this.emitSnapshot()
-    })
+        api?.onDataSyncSnapshot?.((snapshot) => {
+          this.snapshot = snapshot
+          this.emitSnapshot()
+        })
+      }
+
+      const [nextStatus, nextSnapshot] = await Promise.all([
+        api?.getDataSyncStatus?.(),
+        api?.getDataSyncSnapshot?.(),
+      ])
+
+      if (nextStatus) {
+        this.status = nextStatus
+        this.emitStatus()
+      }
+      if (nextSnapshot) {
+        this.snapshot = nextSnapshot
+        this.emitSnapshot()
+      }
+    })()
+
+    try {
+      await this.initializePromise
+    } catch (error) {
+      this.initializePromise = null
+      throw error
+    }
   }
 
   onStatus(listener: DataSyncEventListener) {
@@ -148,6 +180,10 @@ class DataSyncService {
 
   onSnapshot(listener: SnapshotListener) {
     this.snapshotListeners.add(listener)
+    // A snapshot can arrive before the React effect subscribes (especially on
+    // startup when the main process reconnects first). Replay the latest one so
+    // the renderer never depends on a narrow IPC timing window.
+    if (this.snapshot) listener(this.snapshot)
     return () => this.snapshotListeners.delete(listener)
   }
 

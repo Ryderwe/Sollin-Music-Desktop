@@ -72,7 +72,6 @@ export default function MineradioFullPlayer() {
   const currentTime = usePlaybackProgressStore((s) => s.currentTime)
   const duration = usePlaybackProgressStore((s) => s.duration)
   const setShowLyricsPanel = useUIStore((s) => s.setShowLyricsPanel)
-  const isFavorite = useUserStore((s) => s.isFavorite)
   const addToFavorites = useUserStore((s) => s.addToFavorites)
   const removeFromFavorites = useUserStore((s) => s.removeFromFavorites)
 
@@ -293,7 +292,11 @@ export default function MineradioFullPlayer() {
     usePlayerStore.getState().setVolume(Number(next.toFixed(2)))
   }
 
-  const isSongFavorited = currentSong ? isFavorite(currentSong.id, currentSong.platform) : false
+  const isSongFavorited = useUserStore((state) => {
+    if (!currentSong) return false
+    const favorites = currentSong.platform === 'local' ? state.localFavorites : state.favorites
+    return favorites.some((song) => song.id === currentSong.id && song.platform === currentSong.platform)
+  })
   const handleFavoriteClick = () => {
     if (!currentSong) return
     if (isSongFavorited) removeFromFavorites(currentSong.id, currentSong.platform)

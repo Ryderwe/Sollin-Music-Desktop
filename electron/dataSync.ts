@@ -34,6 +34,7 @@ type PersistedDataSyncState = {
 }
 
 const DATA_SYNC_STATE_FILE = 'data-sync-state.json'
+const LEGACY_DATA_SYNC_STATE_ARCHIVE = 'data-sync-state.json.migrated'
 const DATA_SYNC_SERVER_PATH = '/socket'
 
 const joinUrlPath = (basePath: string, childPath: string) => {
@@ -160,6 +161,21 @@ const cloneSnapshot = (snapshot: DataSyncSnapshotData): DataSyncSnapshotData => 
   },
 })
 
+const stableSerialize = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(',')}]`
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize(record[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? String(value)
+}
+
+const isSameSnapshotData = (left: DataSyncSnapshotData, right: DataSyncSnapshotData) => (
+  stableSerialize(left) === stableSerialize(right)
+)
+
 const isEmptySnapshot = (snapshot: DataSyncSnapshotData) => (
   snapshot.user.favorites.length === 0 &&
   snapshot.user.playlists.length === 0 &&
@@ -173,6 +189,166 @@ const isEmptySnapshot = (snapshot: DataSyncSnapshotData) => (
 )
 
 const getSyncStatePath = () => path.join(app.getPath('userData'), DATA_SYNC_STATE_FILE)
+
+type PersistedFavoriteSyncChange = {
+  action?: unknown
+  song?: unknown
+}
+
+const getSongKey = (song: unknown): string => {
+  if (!isRecord(song) || song.id == null || song.platform == null) return ''
+  return `${String(song.platform)}:${String(song.id)}`
+}
+
+const mergeFavoriteLists = (
+  remoteFavorites: unknown[],
+  localFavorites: unknown[],
+  changes: Record<string, PersistedFavoriteSyncChange>,
+) => {
+  const merged: unknown[] = []
+  const seen = new Set<string>()
+
+  // Keep the local order for entries that this desktop already knows, then
+  // append remote-only additions. A stale remote snapshot must not reorder or
+  // erase a favorite that was saved locally while the peer was reconnecting.
+  for (const song of [...localFavorites, ...remoteFavorites]) {
+    const key = getSongKey(song)
+    if (key && seen.has(key)) continue
+    if (key) seen.add(key)
+    merged.push(song)
+  }
+
+  const localByKey = new Map(localFavorites.map((song) => [getSongKey(song), song]))
+  for (const [key, change] of Object.entries(changes)) {
+    if (change?.action === 'remove') {
+      for (let index = merged.length - 1; index >= 0; index -= 1) {
+        if (getSongKey(merged[index]) === key) merged.splice(index, 1)
+      }
+      continue
+    }
+    if (change?.action !== 'add') continue
+
+    const song = localByKey.get(key) || change.song
+    if (!song || !getSongKey(song)) continue
+    const existingIndex = merged.findIndex((item) => getSongKey(item) === key)
+    if (existingIndex >= 0) merged[existingIndex] = song
+    else merged.unshift(song)
+  }
+
+  return merged
+}
+
+const readPersistedUserState = (): Record<string, any> | null => {
+  const stored = readDoc('user')
+  if (!isRecord(stored)) return null
+  if (isRecord(stored.state)) return stored.state
+  return stored
+}
+
+/**
+ * A favorite click is flushed to the user document synchronously, while the
+ * data-sync snapshot is intentionally debounced. Replay the small mutation
+ * journal from that user document before any remote snapshot can overwrite
+ * the just-added/removed song during startup or reconnect.
+ */
+const applyPendingFavoriteChanges = (
+  snapshot: DataSyncSnapshotData,
+  options: { preservePersistedFavorites?: boolean } = {},
+): DataSyncSnapshotData => {
+  const userState = readPersistedUserState()
+  const changes = isRecord(userState?.favoriteSyncChanges)
+    ? userState.favoriteSyncChanges as Record<string, PersistedFavoriteSyncChange>
+    : {}
+  const nextSnapshot = cloneSnapshot(snapshot)
+  const localFavorites = Array.isArray(userState?.favorites) ? userState.favorites : []
+  const preservePersistedFavorites = options.preservePersistedFavorites !== false
+  nextSnapshot.user.favorites = mergeFavoriteLists(
+    nextSnapshot.user.favorites,
+    preservePersistedFavorites ? localFavorites : [],
+    changes,
+  ) as typeof nextSnapshot.user.favorites
+
+  return nextSnapshot
+}
+
+const mergePersistedUserStateIntoSnapshot = (
+  snapshot: DataSyncSnapshotData,
+  userState: Record<string, any> | null,
+): DataSyncSnapshotData => {
+  if (!userState) return applyPendingFavoriteChanges(snapshot)
+
+  const nextSnapshot = cloneSnapshot(snapshot)
+  if (Array.isArray(userState.favorites)) nextSnapshot.user.favorites = userState.favorites
+  if (Array.isArray(userState.playlists)) nextSnapshot.user.playlists = userState.playlists
+  if (Array.isArray(userState.onlinePlaylists)) nextSnapshot.user.onlinePlaylists = userState.onlinePlaylists
+  if (Array.isArray(userState.recentlyPlayed)) nextSnapshot.user.recentlyPlayed = userState.recentlyPlayed
+  if (Array.isArray(userState.playHistory)) nextSnapshot.user.playHistory = userState.playHistory
+  if (Array.isArray(userState.playlistSectionOrder)) {
+    nextSnapshot.user.playlistSectionOrder = userState.playlistSectionOrder
+  }
+  return applyPendingFavoriteChanges(nextSnapshot)
+}
+
+const normalizePersistedState = (
+  raw: unknown,
+  defaultConfig: DataSyncConfig,
+): PersistedDataSyncState | null => {
+  if (!isRecord(raw)) return null
+
+  const parsed = raw as Partial<PersistedDataSyncState>
+  const snapshot = parsed.snapshot && isRecord(parsed.snapshot)
+    ? cloneSnapshot({
+        ...createDefaultSnapshot(),
+        ...parsed.snapshot,
+      } as DataSyncSnapshotData)
+    : null
+
+  return {
+    config: {
+      ...defaultConfig,
+      ...(isRecord(parsed.config) ? parsed.config as Partial<DataSyncConfig> : {}),
+      serverPort: normalizePort(parsed.config?.serverPort),
+      autoResolveSyncConflicts: typeof parsed.config?.autoResolveSyncConflicts === 'boolean'
+        ? parsed.config.autoResolveSyncConflicts
+        : defaultConfig.autoResolveSyncConflicts,
+      conflictResolutionMode: normalizeConflictResolutionMode(parsed.config?.conflictResolutionMode),
+      clientHost: typeof parsed.config?.clientHost === 'string' && parsed.config.clientHost.trim()
+        ? parsed.config.clientHost.trim()
+        : defaultConfig.clientHost,
+      connectionCode: typeof parsed.config?.connectionCode === 'string' ? parsed.config.connectionCode.trim() : '',
+    },
+    revision: Number.isFinite(parsed.revision) ? Number(parsed.revision) : 0,
+    snapshot,
+  }
+}
+
+const isDefaultPersistedState = (state: PersistedDataSyncState, defaultConfig: DataSyncConfig) => (
+  state.revision === 0 &&
+  state.snapshot === null &&
+  state.config.enabled === defaultConfig.enabled &&
+  state.config.mode === defaultConfig.mode &&
+  state.config.autoResolveSyncConflicts === defaultConfig.autoResolveSyncConflicts &&
+  state.config.conflictResolutionMode === defaultConfig.conflictResolutionMode &&
+  state.config.serverPort === defaultConfig.serverPort &&
+  state.config.clientHost === defaultConfig.clientHost &&
+  state.config.connectionCode === defaultConfig.connectionCode
+)
+
+const archiveLegacySyncState = (filePath: string) => {
+  const archivePath = path.join(path.dirname(filePath), LEGACY_DATA_SYNC_STATE_ARCHIVE)
+  try {
+    if (!fs.existsSync(archivePath)) {
+      fs.renameSync(filePath, archivePath)
+    } else {
+      // The first migration already preserved a copy; remove only the stale
+      // source name so it cannot be mistaken for an active state file later.
+      fs.unlinkSync(filePath)
+    }
+    console.log('[data-sync] archived legacy state file:', archivePath)
+  } catch (error) {
+    console.warn('[data-sync] failed to archive legacy state file:', error)
+  }
+}
 
 const getLocalDeviceId = () => {
   const persistedPath = path.join(app.getPath('userData'), 'data-sync-device.json')
@@ -237,50 +413,48 @@ const readPersistedState = (): PersistedDataSyncState => {
   }
 
   try {
-    const stored = readDoc('data-sync-state')
-    if (stored && isRecord(stored)) {
-      const parsed = stored as Partial<PersistedDataSyncState>
-      return {
-        config: { ...defaultConfig, ...(isRecord(parsed.config) ? parsed.config as Partial<DataSyncConfig> : {}), serverPort: normalizePort(parsed.config?.serverPort), conflictResolutionMode: normalizeConflictResolutionMode(parsed.config?.conflictResolutionMode) },
-        revision: Number.isFinite(parsed.revision) ? Number(parsed.revision) : 0,
-        snapshot: parsed.snapshot && isRecord(parsed.snapshot) ? cloneSnapshot({ ...createDefaultSnapshot(), ...parsed.snapshot } as DataSyncSnapshotData) : null,
-      }
-    }
+    const stored = normalizePersistedState(readDoc('data-sync-state'), defaultConfig)
     const filePath = getSyncStatePath()
-    if (!fs.existsSync(filePath)) return fallback
+    if (!fs.existsSync(filePath)) return stored || fallback
+
     const raw = fs.readFileSync(filePath, 'utf8').trim()
-    if (!raw) return fallback
-    const parsed = JSON.parse(raw) as Partial<PersistedDataSyncState>
-    return {
-      config: {
-        ...defaultConfig,
-        ...(isRecord(parsed.config) ? parsed.config as Partial<DataSyncConfig> : {}),
-        serverPort: normalizePort(parsed.config?.serverPort),
-        autoResolveSyncConflicts: typeof parsed.config?.autoResolveSyncConflicts === 'boolean'
-          ? parsed.config.autoResolveSyncConflicts
-          : defaultConfig.autoResolveSyncConflicts,
-        conflictResolutionMode: normalizeConflictResolutionMode(parsed.config?.conflictResolutionMode),
-        clientHost: typeof parsed.config?.clientHost === 'string' && parsed.config.clientHost.trim()
-          ? parsed.config.clientHost.trim()
-          : defaultConfig.clientHost,
-        connectionCode: typeof parsed.config?.connectionCode === 'string' ? parsed.config.connectionCode.trim() : '',
-      },
-      revision: Number.isFinite(parsed.revision) ? Number(parsed.revision) : 0,
-      snapshot: parsed.snapshot && isRecord(parsed.snapshot) ? cloneSnapshot({
-        ...createDefaultSnapshot(),
-        ...parsed.snapshot,
-      } as DataSyncSnapshotData) : null,
+    if (!raw) return stored || fallback
+
+    let legacy: PersistedDataSyncState | null = null
+    try {
+      legacy = normalizePersistedState(JSON.parse(raw), defaultConfig)
+    } catch {
+      // Keep the source file for a future repair if it is not valid JSON.
+      return stored || fallback
     }
+    if (!legacy) return stored || fallback
+
+    // Builds before the electron-store migration wrote this file directly in
+    // ~/.sollin. If the new document is absent/default, import the old state;
+    // otherwise keep the newer document and archive the stale legacy copy.
+    if (!stored || isDefaultPersistedState(stored, defaultConfig)) {
+      writeDoc('data-sync-state', legacy, { immediate: true })
+      archiveLegacySyncState(filePath)
+      return legacy
+    }
+
+    archiveLegacySyncState(filePath)
+    return stored
   } catch {
     return fallback
   }
 }
 
-const writePersistedState = () => {
+const writePersistedState = (options: { immediate?: boolean } = {}) => {
   const state: PersistedDataSyncState = {
     config: { ...config },
     revision,
     snapshot: currentSnapshot ? cloneSnapshot(currentSnapshot.data) : null,
+  }
+
+  if (options.immediate) {
+    writeDoc('data-sync-state', state, { immediate: true })
+    return
   }
 
   Promise.resolve().then(() => writeDoc('data-sync-state', state)).catch((error) => {
@@ -358,13 +532,24 @@ const sendSnapshotToWindows = (snapshot: DataSyncSnapshot) => {
 }
 
 const setCurrentSnapshot = (nextData: DataSyncSnapshotData, sourceId = getLocalDeviceId(), sourceName = getDeviceName()) => {
+  const localDeviceId = getLocalDeviceId()
+  const effectiveData = applyPendingFavoriteChanges(nextData, {
+    // Local pushes already contain the renderer's current list. For snapshots
+    // received from a peer, merge the persisted local list before publishing
+    // or persisting the snapshot so an old remote list cannot win a race.
+    preservePersistedFavorites: sourceId !== localDeviceId,
+  })
+  if (currentSnapshot && isSameSnapshotData(currentSnapshot.data, effectiveData)) {
+    return false
+  }
+
   revision += 1
   currentSnapshot = {
     revision,
     sourceId,
     sourceName,
     updatedAt: Date.now(),
-    data: cloneSnapshot(nextData),
+    data: cloneSnapshot(effectiveData),
   }
   currentStatus = {
     ...currentStatus,
@@ -376,6 +561,7 @@ const setCurrentSnapshot = (nextData: DataSyncSnapshotData, sourceId = getLocalD
   sendSnapshotToWindows(currentSnapshot)
   lxCompatBridge?.onSnapshotUpdated(currentSnapshot.data, sourceId)
   lxCompatClient?.onSnapshotUpdated(currentSnapshot.data, sourceId)
+  return true
 }
 
 const updateConnectedDevices = () => {
@@ -579,8 +765,8 @@ const startServer = async() => {
 
         if (payload?.type === 'snapshot' && isRecord(payload.snapshot) && isRecord(payload.snapshot.data)) {
           const snapshot = payload.snapshot as DataSyncSnapshot
-          setCurrentSnapshot(snapshot.data, snapshot.sourceId || deviceId, snapshot.sourceName || deviceName)
-          broadcastSnapshot(currentSnapshot!, socket)
+          const changed = setCurrentSnapshot(snapshot.data, snapshot.sourceId || deviceId, snapshot.sourceName || deviceName)
+          if (changed && currentSnapshot) broadcastSnapshot(currentSnapshot, socket)
           return
         }
 
@@ -766,13 +952,24 @@ const connectNativeClient = async(connectionCode: string) => new Promise<void>((
 
     if (payload?.type === 'snapshot' && isRecord(payload.snapshot) && isRecord(payload.snapshot.data)) {
       const snapshot = payload.snapshot as DataSyncSnapshot
+      const effectiveData = applyPendingFavoriteChanges(snapshot.data)
+      if (currentSnapshot && isSameSnapshotData(currentSnapshot.data, effectiveData)) {
+        revision = Number.isFinite(snapshot.revision) ? snapshot.revision : revision
+        currentStatus = {
+          ...currentStatus,
+          revision,
+        }
+        notifyStatus()
+        return
+      }
+
       revision = Number.isFinite(snapshot.revision) ? snapshot.revision : revision
       currentSnapshot = {
         revision,
         sourceId: snapshot.sourceId || getLocalDeviceId(),
         sourceName: snapshot.sourceName || getDeviceName(),
         updatedAt: Number.isFinite(snapshot.updatedAt) ? snapshot.updatedAt : Date.now(),
-        data: cloneSnapshot(snapshot.data),
+        data: cloneSnapshot(effectiveData),
       }
       currentStatus = {
         ...currentStatus,
@@ -867,15 +1064,26 @@ export const initializeDataSyncRuntime = async() => {
   const persisted = readPersistedState()
   config = persisted.config
   revision = persisted.revision
-  currentSnapshot = persisted.snapshot
-    ? {
-        revision: persisted.revision,
-        sourceId: getLocalDeviceId(),
-        sourceName: getDeviceName(),
-        updatedAt: Date.now(),
-        data: cloneSnapshot(persisted.snapshot),
-      }
-    : null
+  const persistedUserState = readPersistedUserState()
+  if (persisted.snapshot) {
+    currentSnapshot = {
+      revision: persisted.revision,
+      sourceId: getLocalDeviceId(),
+      sourceName: getDeviceName(),
+      updatedAt: Date.now(),
+      data: mergePersistedUserStateIntoSnapshot(persisted.snapshot, persistedUserState),
+    }
+  } else if (persistedUserState) {
+    currentSnapshot = {
+      revision: persisted.revision,
+      sourceId: getLocalDeviceId(),
+      sourceName: getDeviceName(),
+      updatedAt: Date.now(),
+      data: mergePersistedUserStateIntoSnapshot(createDefaultSnapshot(), persistedUserState),
+    }
+  } else {
+    currentSnapshot = null
+  }
 
   currentStatus = {
     ...currentStatus,
@@ -915,11 +1123,15 @@ export const initializeDataSyncRuntime = async() => {
 }
 
 export const disposeDataSyncRuntime = async() => {
+  // before-quit does not await this async cleanup. Persist the current
+  // snapshot before the first await so a last-second favorite push cannot be
+  // lost when Electron tears down the renderer.
+  writePersistedState({ immediate: true })
   disconnectClient()
   await closeServer()
   await lxCompatBridge?.stop()
   lxCompatBridge = null
-  writePersistedState()
+  writePersistedState({ immediate: true })
 }
 
 export const getDataSyncStatus = (): DataSyncStatus => currentStatus
@@ -1031,10 +1243,10 @@ export const disconnectDataSync = async() => {
 
 export const pushDataSyncSnapshot = async(snapshotData: DataSyncSnapshotData) => {
   const nextSnapshot = cloneSnapshot(snapshotData)
-  setCurrentSnapshot(nextSnapshot)
+  const changed = setCurrentSnapshot(nextSnapshot)
 
-  if (config.enabled && config.mode === 'server' && wsServer) {
-    broadcastSnapshot(currentSnapshot!)
+  if (changed && config.enabled && config.mode === 'server' && wsServer && currentSnapshot) {
+    broadcastSnapshot(currentSnapshot)
   }
 
   if (config.enabled && config.mode === 'client' && clientSocket && clientSocket.readyState === WebSocket.OPEN) {
