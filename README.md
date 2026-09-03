@@ -14,9 +14,9 @@
 
 博客： [月明星稀](https://blog.leguans.cn)
 
-|  |  |
+| 赞助商 | TorchAI |
 | :---: | :--- |
-| <a href="https://torchai.ai/"><img src="images/torchai.png" alt="TorchAI" width="240"></a> | TorchAI为需要在编码、内容和自动化等场景中便捷访问API的开发者提供大型语言模型中继服务。它的支持有助于Lithe持续开发和探索实用的AI工具。感谢TorchAI对本项目的支持! |
+| <a href="https://torchai.ai/"><img src="images/torchai.png" alt="TorchAI" width="240"></a> | <a href="https://torchai.ai/">TorchAI为需要在编码、内容和自动化等场景中便捷访问API的开发者提供大型语言模型中继服务。它的支持有助于Lithe持续开发和探索实用的AI工具。感谢TorchAI对本项目的支持!</a> |
 
 中文 | [English](README.en.md)
 

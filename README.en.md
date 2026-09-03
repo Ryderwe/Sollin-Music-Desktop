@@ -4,9 +4,9 @@
 
 Blog: [月明星稀](https://www.ymxx.net)
 
-| Logo | Description |
+| 赞助商 | TorchAI |
 | :---: | :--- |
-| <a href="https://torchai.ai/"><img src="images/torchai.png" alt="TorchAI" width="240"></a> | TorchAI provides large language model relay services for developers who need convenient API access for coding, content creation, automation and other scenarios. Its support helps Lithe continue developing and exploring practical AI tools. Thanks to TorchAI for supporting this project! |
+| <a href="https://torchai.ai/"><img src="images/torchai.png" alt="TorchAI" width="240"></a> | <a href="https://torchai.ai/">TorchAI provides large language model relay services for developers who need convenient API access for coding, content creation, automation and other scenarios. Its support helps Lithe continue developing and exploring practical AI tools. Thanks to TorchAI for supporting this project!</a> |
 
 [中文](README.md) | English
   <a href="https://github.com/Ryderwe/Sollin-Music-Desktop/releases"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Ryderwe/Sollin-Music-Desktop?include_prereleases&style=flat-square"></a>
